@@ -1,0 +1,41 @@
+{
+  "name": "Carrusel ejemplo · Desarrollo web",
+  "slides": [
+    {
+      "templateId": "cover-tech",
+      "eyebrow": "Desarrollo web",
+      "title": "Tu web debe vender, no solo existir",
+      "body": "Una buena página guía, explica y convierte visitas en oportunidades.",
+      "cta": "Guarda este checklist",
+      "textScale": "balanced",
+      "showDecorations": false
+    },
+    {
+      "templateId": "tip-editorial",
+      "eyebrow": "Tip ecommerce",
+      "title": "Si el pago es difícil, pierdes ventas.",
+      "body": "Reduce pasos, muestra medios de pago y confirma cada acción importante.",
+      "cta": "Area3 · Creamos tu web ideal",
+      "textScale": "compact",
+      "showDecorations": false
+    },
+    {
+      "templateId": "checklist",
+      "eyebrow": "Checklist",
+      "title": "Antes de publicar tu tienda",
+      "body": "Productos claros. Precios visibles. Botón de compra. Contacto rápido.",
+      "cta": "Revisa estos puntos",
+      "textScale": "balanced",
+      "showDecorations": true
+    },
+    {
+      "templateId": "free",
+      "eyebrow": "Lámina libre",
+      "title": "Una idea clara vale más que diez adornos.",
+      "body": "Usa esta lámina para frases, avisos, bajadas simples o contenido puntual.",
+      "cta": "Area3",
+      "textScale": "balanced",
+      "showDecorations": false
+    }
+  ]
+}

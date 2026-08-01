@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instagram Content Studio</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand-lockup">
+        <span class="mark">area3</span>
+        <span class="product">Content Studio</span>
+      </div>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Cliente</h2>
+          <button id="newClientButton" type="button">Nuevo</button>
+        </div>
+        <select id="clientSelect"></select>
+        <label>
+          Nombre
+          <input id="clientNameInput" type="text" autocomplete="off">
+        </label>
+        <div class="swatches">
+          <label>Primario <input id="primaryColorInput" type="color"></label>
+          <label>Fondo <input id="secondaryColorInput" type="color"></label>
+          <label>Oscuro <input id="darkColorInput" type="color"></label>
+          <label>Acento <input id="accentColorInput" type="color"></label>
+        </div>
+        <label>
+          Logo
+          <input id="logoInput" type="file" accept="image/*">
+        </label>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Proyecto</h2>
+          <button id="newProjectButton" type="button">Nuevo</button>
+        </div>
+        <select id="projectSelect"></select>
+        <label>
+          Nombre del carrusel
+          <input id="projectNameInput" type="text" autocomplete="off">
+        </label>
+        <div class="button-row">
+          <button id="saveButton" type="button">Guardar</button>
+          <button id="exportJsonButton" type="button">Exportar JSON</button>
+          <button id="exportAllButton" type="button">Exportar todo</button>
+        </div>
+        <label>
+          Importar textos JSON
+          <input id="jsonInput" type="file" accept="application/json,.json">
+        </label>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="kicker">Formato 1:1 · 1080 × 1080</p>
+          <h1>Editor local de posts y carruseles</h1>
+        </div>
+        <div class="button-row">
+          <button id="addSlideButton" type="button">Agregar lámina</button>
+          <button id="duplicateSlideButton" type="button">Duplicar</button>
+          <button id="exportCurrentButton" class="primary" type="button">Exportar actual</button>
+        </div>
+      </header>
+
+      <section class="stage-layout">
+        <div class="slide-list" id="slideList"></div>
+
+        <div class="stage-wrap">
+          <article id="postCanvas" class="post-canvas template-cover-tech"></article>
+          <p class="stage-note">Lo que ves dentro del cuadrado es lo que se exporta como imagen.</p>
+        </div>
+
+        <aside class="inspector">
+          <section class="panel">
+            <h2>Lámina</h2>
+            <label>
+              Plantilla
+              <select id="templateSelect"></select>
+            </label>
+            <label>
+              Tamaño de texto
+              <select id="textScaleSelect">
+                <option value="compact">Pequeño · más aire</option>
+                <option value="balanced">Medio · recomendado</option>
+                <option value="hero">Grande · impacto</option>
+              </select>
+            </label>
+            <label class="checkbox-label">
+              <input id="decorationsInput" type="checkbox">
+              Mostrar formas decorativas
+            </label>
+            <label>
+              Antetítulo
+              <input id="eyebrowInput" type="text">
+            </label>
+            <label>
+              Título
+              <textarea id="titleInput" rows="3"></textarea>
+            </label>
+            <label>
+              Cuerpo
+              <textarea id="bodyInput" rows="4"></textarea>
+            </label>
+            <label>
+              CTA / firma
+              <input id="ctaInput" type="text">
+            </label>
+            <label>
+              Biblioteca de fondos
+              <select id="backgroundSelect"></select>
+            </label>
+            <label>
+              Agregar fondo a biblioteca
+              <input id="backgroundInput" type="file" accept="image/*">
+            </label>
+            <button id="clearBackgroundButton" type="button">Quitar fondo de imagen</button>
+          </section>
+
+          <section class="panel">
+            <h2>Exportación</h2>
+            <label>
+              Formato
+              <select id="formatSelect">
+                <option value="jpeg">JPG para Instagram</option>
+                <option value="png">PNG</option>
+              </select>
+            </label>
+            <label>
+              Calidad JPG
+              <input id="qualityInput" type="range" min="0.72" max="0.98" step="0.01" value="0.92">
+            </label>
+            <div id="statusBox" class="status">Listo.</div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
