@@ -38,6 +38,7 @@ const elements = {
   darkColorInput: document.querySelector("#darkColorInput"),
   accentColorInput: document.querySelector("#accentColorInput"),
   logoInput: document.querySelector("#logoInput"),
+  logoWidthInput: document.querySelector("#logoWidthInput"),
   newClientButton: document.querySelector("#newClientButton"),
   projectSelect: document.querySelector("#projectSelect"),
   projectNameInput: document.querySelector("#projectNameInput"),
@@ -58,7 +59,7 @@ const elements = {
   titleInput: document.querySelector("#titleInput"),
   bodyInput: document.querySelector("#bodyInput"),
   ctaInput: document.querySelector("#ctaInput"),
-  backgroundSelect: document.querySelector("#backgroundSelect"),
+  backgroundList: document.querySelector("#backgroundList"),
   backgroundInput: document.querySelector("#backgroundInput"),
   clearBackgroundButton: document.querySelector("#clearBackgroundButton"),
   formatSelect: document.querySelector("#formatSelect"),
@@ -76,6 +77,24 @@ function getActiveClient() {
 
 function getActiveProject() {
   return state.projects.find((project) => project.id === state.activeProjectId) || state.projects[0];
+}
+
+function ensureActiveProjectForClient(clientId) {
+  const clientProjects = state.projects.filter((project) => project.clientId === clientId);
+  if (!clientProjects.length) {
+    const project = createProject(clientId);
+    state.projects.push(project);
+    state.activeProjectId = project.id;
+    return project;
+  }
+
+  const activeProject = state.projects.find((project) => project.id === state.activeProjectId);
+  if (!activeProject || activeProject.clientId !== clientId) {
+    state.activeProjectId = clientProjects[0].id;
+    return clientProjects[0];
+  }
+
+  return activeProject;
 }
 
 function getActiveSlide() {
@@ -147,6 +166,8 @@ function emphasizeFirstWords(title) {
 }
 
 function renderSelectors() {
+  ensureActiveProjectForClient(state.activeClientId);
+
   elements.clientSelect.innerHTML = state.clients
     .map((client) => `<option value="${client.id}">${escapeHtml(client.name)}</option>`)
     .join("");
@@ -171,6 +192,7 @@ function renderClientForm() {
   elements.secondaryColorInput.value = client.secondaryColor;
   elements.darkColorInput.value = client.darkColor;
   elements.accentColorInput.value = client.accentColor;
+  elements.logoWidthInput.value = String(Math.round(Number(client.logoWidth || 20)));
 }
 
 function renderProjectForm() {
@@ -190,9 +212,40 @@ function renderSlideList() {
     .join("");
 }
 
+function renderBackgroundLibrary() {
+  const client = getActiveClient();
+  const slide = getActiveSlide();
+  const backgrounds = Array.isArray(client.backgrounds) ? client.backgrounds : [];
+
+  if (!backgrounds.length) {
+    elements.backgroundList.innerHTML = `
+      <div class="background-empty">
+        <strong>Sin fondos</strong>
+        <span>Sube el primero</span>
+      </div>
+    `;
+    return;
+  }
+
+  elements.backgroundList.innerHTML = backgrounds
+    .map((background) => {
+      const isActive = background.id === slide.backgroundId;
+      return `
+        <button class="background-thumb ${isActive ? "active" : ""}" type="button" data-background-id="${background.id}" title="${escapeHtml(background.name)}">
+          <span class="background-image" style="background-image:url('${background.dataUrl}')"></span>
+          <span class="background-name">${escapeHtml(background.name)}</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function syncBackgroundControls() {
+  elements.clearBackgroundButton.disabled = !getSlideBackground(getActiveSlide(), getActiveClient());
+}
+
 function renderInspector() {
   const slide = getActiveSlide();
-  const client = getActiveClient();
   elements.templateSelect.value = slide.templateId;
   elements.textScaleSelect.value = slide.textScale || "balanced";
   elements.decorationsInput.checked = slide.showDecorations === true;
@@ -200,11 +253,7 @@ function renderInspector() {
   elements.titleInput.value = slide.title;
   elements.bodyInput.value = slide.body;
   elements.ctaInput.value = slide.cta;
-  elements.backgroundSelect.innerHTML = [
-    `<option value="">Sin fondo de biblioteca</option>`,
-    ...((client.backgrounds || []).map((background) => `<option value="${background.id}">${escapeHtml(background.name)}</option>`))
-  ].join("");
-  elements.backgroundSelect.value = slide.backgroundId || "";
+  syncBackgroundControls();
 }
 
 function renderCanvas() {
@@ -213,12 +262,14 @@ function renderCanvas() {
   const templateClass = `template-${slide.templateId}`;
   const textScaleClass = `text-${slide.textScale || "balanced"}`;
   const decorationClass = slide.showDecorations === true ? "has-decorations" : "no-decorations";
+  const backgroundClass = getSlideBackground(slide, client) ? "has-background-image" : "no-background-image";
 
-  elements.postCanvas.className = `post-canvas ${templateClass} ${textScaleClass} ${decorationClass}`;
+  elements.postCanvas.className = `post-canvas ${templateClass} ${textScaleClass} ${decorationClass} ${backgroundClass}`;
   elements.postCanvas.style.setProperty("--brand-primary", client.primaryColor);
   elements.postCanvas.style.setProperty("--brand-secondary", client.secondaryColor);
   elements.postCanvas.style.setProperty("--brand-dark", client.darkColor);
   elements.postCanvas.style.setProperty("--brand-accent", client.accentColor);
+  elements.postCanvas.style.setProperty("--logo-width", `${Number(client.logoWidth || 20)}%`);
 
   const logoSource = client.logoDataUrl || client.logoPath || "";
   const logo = logoSource
@@ -227,8 +278,8 @@ function renderCanvas() {
 
   const selectedBackground = getSlideBackground(slide, client);
   const background = selectedBackground
-    ? `<div class="post-bg" style="background-image:url('${selectedBackground}')"></div>`
-    : `<div class="post-bg"></div>`;
+    ? `<div class="post-bg" style="background-image:url('${selectedBackground}')"></div><div class="post-overlay"></div><div class="post-frame"></div>`
+    : `<div class="post-bg"></div><div class="post-overlay"></div><div class="post-frame"></div>`;
 
   if (slide.templateId === "checklist") {
     elements.postCanvas.innerHTML = `
@@ -246,9 +297,9 @@ function renderCanvas() {
       <div class="post-layer">
         <p class="post-eyebrow">${escapeHtml(slide.eyebrow)}</p>
         <div class="post-copy">
-          <h2 class="post-title">${emphasizeFirstWords(slide.cta || "Checklist para vender mejor")}</h2>
+          <h2 class="post-title">${emphasizeFirstWords(slide.title || "Checklist para vender mejor")}</h2>
         </div>
-        <p class="post-cta">${escapeHtml(client.name)} · contenido práctico</p>
+        <p class="post-cta">${escapeHtml(slide.cta || `${client.name} · contenido práctico`)}</p>
       </div>
     `;
     return;
@@ -277,6 +328,7 @@ function render() {
   renderClientForm();
   renderProjectForm();
   renderSlideList();
+  renderBackgroundLibrary();
   renderInspector();
   renderCanvas();
 }
@@ -285,6 +337,8 @@ function updateSlide(patch) {
   Object.assign(getActiveSlide(), patch);
   getActiveProject().updatedAt = new Date().toISOString();
   renderSlideList();
+  renderBackgroundLibrary();
+  syncBackgroundControls();
   renderCanvas();
   scheduleAutosave();
 }
@@ -299,11 +353,23 @@ async function readFileAsDataUrl(file) {
 }
 
 async function saveState(options = {}) {
-  await fetch("/api/state", {
+  const response = await fetch("/api/state", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(state)
   });
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const payload = await response.json();
+      detail = payload.error ? `: ${payload.error}` : "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(`No se pudo guardar el estado${detail}`);
+  }
+
   if (!options.silent) {
     setStatus("Proyecto guardado en base de datos/local.");
   }
@@ -395,23 +461,27 @@ async function renderSlideToImage(slide, client, format, quality) {
     balanced: { title: 80, body: 36, eyebrow: 26, cta: 27 },
     hero: { title: 98, body: 40, eyebrow: 28, cta: 30 }
   }[scale] || { title: 80, body: 36, eyebrow: 26, cta: 27 };
+  const hasBackground = Boolean(getSlideBackground(slide, client));
 
   drawBaseBackground(context, slide, client, palette);
   await drawSelectedBackground(context, slide, client);
+  drawTemplateOverlay(context, slide, palette, hasBackground);
 
   if (slide.templateId === "tip-editorial") {
-    drawEditorialSlide(context, slide, client, palette, sizes);
+    drawEditorialSlide(context, slide, client, palette, sizes, hasBackground);
   } else if (slide.templateId === "checklist") {
-    drawChecklistSlide(context, slide, client, palette, sizes);
+    drawChecklistSlide(context, slide, client, palette, sizes, hasBackground);
   } else if (slide.templateId === "cta") {
-    drawCtaSlide(context, slide, client, palette, sizes);
+    drawCtaSlide(context, slide, client, palette, sizes, hasBackground);
   } else if (slide.templateId === "free") {
-    drawFreeSlide(context, slide, client, palette, sizes);
+    drawFreeSlide(context, slide, client, palette, sizes, hasBackground);
   } else {
-    drawCoverSlide(context, slide, client, palette, sizes);
+    drawCoverSlide(context, slide, client, palette, sizes, hasBackground);
   }
 
-  await drawLogo(context, client, 78, 78, 210, 95);
+  const logoWidth = Number(client.logoWidth || 20);
+  const logoScale = Math.max(0.5, Math.min(2.2, logoWidth / 20));
+  await drawLogo(context, client, 78, 78, Math.round(210 * logoScale), Math.round(95 * logoScale));
   return canvas.toDataURL(`image/${format}`, format === "jpeg" ? quality : undefined);
 }
 
@@ -430,8 +500,14 @@ function drawBaseBackground(context, slide, client, palette) {
   context.fillStyle = gradient;
   context.fillRect(0, 0, 1080, 1080);
 
-  drawGlow(context, 850, 260, 340, hexToRgba(palette.accent, 0.22));
-  drawGlow(context, 910, 880, 300, hexToRgba(palette.primary, 0.28));
+  context.save();
+  context.translate(815, -130);
+  context.rotate(0.22);
+  context.fillStyle = hexToRgba(palette.accent, 0.14);
+  context.fillRect(0, 0, 250, 1320);
+  context.fillStyle = hexToRgba(palette.primary, 0.16);
+  context.fillRect(282, 0, 180, 1320);
+  context.restore();
 }
 
 async function drawSelectedBackground(context, slide, client) {
@@ -441,12 +517,52 @@ async function drawSelectedBackground(context, slide, client) {
   const image = await loadImage(source);
   const cover = coverRect(image.width, image.height, 1080, 1080);
   context.save();
-  context.globalAlpha = slide.templateId === "tip-editorial" ? 0.18 : 0.42;
+  const alphaByTemplate = {
+    "tip-editorial": 0.82,
+    checklist: 0.78,
+    cta: 0.84,
+    free: 0.9,
+    "cover-tech": 0.88
+  };
+  context.globalAlpha = alphaByTemplate[slide.templateId] || 0.86;
   context.drawImage(image, cover.x, cover.y, cover.width, cover.height);
   context.restore();
 }
 
-function drawCoverSlide(context, slide, client, palette, sizes) {
+function drawTemplateOverlay(context, slide, palette, hasBackground) {
+  if (!hasBackground) return;
+
+  if (slide.templateId === "tip-editorial") {
+    const paper = context.createLinearGradient(0, 0, 1080, 0);
+    paper.addColorStop(0, hexToRgba(palette.secondary, 0.96));
+    paper.addColorStop(0.58, hexToRgba(palette.secondary, 0.84));
+    paper.addColorStop(0.78, hexToRgba(palette.secondary, 0.2));
+    paper.addColorStop(1, "rgba(242,240,230,0)");
+    context.fillStyle = paper;
+    context.fillRect(0, 0, 1080, 1080);
+  } else {
+    const side = context.createLinearGradient(0, 0, 1080, 0);
+    side.addColorStop(0, "rgba(7,16,24,0.92)");
+    side.addColorStop(0.58, "rgba(7,16,24,0.46)");
+    side.addColorStop(1, "rgba(7,16,24,0.08)");
+    context.fillStyle = side;
+    context.fillRect(0, 0, 1080, 1080);
+  }
+
+  const bottom = context.createLinearGradient(0, 1080, 0, 430);
+  bottom.addColorStop(0, "rgba(7,16,24,0.78)");
+  bottom.addColorStop(1, "rgba(7,16,24,0)");
+  context.fillStyle = bottom;
+  context.fillRect(0, 0, 1080, 1080);
+
+  context.save();
+  context.strokeStyle = hexToRgba(palette.primary, 0.82);
+  context.lineWidth = 8;
+  context.strokeRect(58, 58, 964, 964);
+  context.restore();
+}
+
+function drawCoverSlide(context, slide, client, palette, sizes, hasBackground) {
   if (slide.showDecorations) {
     drawGrid(context);
     drawPhoneShape(context, palette);
@@ -465,11 +581,21 @@ function drawCoverSlide(context, slide, client, palette, sizes) {
     ctaSize: sizes.cta,
     titleColor: "#ffffff",
     bodyColor: "#e8f0ee",
-    accentColor: palette.primary
+    accentColor: palette.primary,
+    shadow: hasBackground
   });
 }
 
-function drawEditorialSlide(context, slide, client, palette, sizes) {
+function drawEditorialSlide(context, slide, client, palette, sizes, hasBackground) {
+  if (hasBackground) {
+    roundRect(context, 58, 260, 850, 540, 8);
+    context.fillStyle = hexToRgba(palette.secondary, 0.88);
+    context.fill();
+    context.strokeStyle = "rgba(7,16,24,0.14)";
+    context.lineWidth = 2;
+    context.stroke();
+  }
+
   context.fillStyle = hexToRgba(palette.primary, 0.72);
   context.fillRect(78, 338, 610, 76);
   drawTextBlock(context, {
@@ -493,12 +619,12 @@ function drawEditorialSlide(context, slide, client, palette, sizes) {
   context.fillRect(78, 932, 560, 7);
 }
 
-function drawChecklistSlide(context, slide, client, palette, sizes) {
+function drawChecklistSlide(context, slide, client, palette, sizes, hasBackground) {
   drawTextBlock(context, {
     eyebrow: slide.eyebrow,
-    title: slide.cta || slide.title,
+    title: slide.title,
     body: "",
-    cta: `${client.name} · contenido práctico`,
+    cta: slide.cta || `${client.name} · contenido práctico`,
     x: 78,
     y: 365,
     maxWidth: slide.showDecorations ? 520 : 780,
@@ -508,12 +634,13 @@ function drawChecklistSlide(context, slide, client, palette, sizes) {
     ctaSize: sizes.cta,
     titleColor: "#ffffff",
     bodyColor: "#e8f0ee",
-    accentColor: palette.primary
+    accentColor: palette.primary,
+    shadow: hasBackground
   });
 
   if (!slide.showDecorations) return;
 
-  roundRect(context, 595, 155, 400, 650, 44);
+  roundRect(context, 595, 155, 400, 650, 8);
   context.fillStyle = palette.secondary;
   context.fill();
   context.fillStyle = "#15130f";
@@ -532,8 +659,14 @@ function drawChecklistSlide(context, slide, client, palette, sizes) {
   });
 }
 
-function drawCtaSlide(context, slide, client, palette, sizes) {
-  drawGlow(context, 170, 180, 290, hexToRgba(palette.primary, 0.28));
+function drawCtaSlide(context, slide, client, palette, sizes, hasBackground) {
+  context.save();
+  context.translate(-80, 135);
+  context.rotate(-0.14);
+  context.fillStyle = hexToRgba(palette.primary, 0.18);
+  context.fillRect(0, 0, 720, 170);
+  context.restore();
+
   drawTextBlock(context, {
     eyebrow: slide.eyebrow,
     title: slide.title,
@@ -548,23 +681,26 @@ function drawCtaSlide(context, slide, client, palette, sizes) {
     ctaSize: sizes.cta,
     titleColor: "#ffffff",
     bodyColor: "#e8f0ee",
-    accentColor: palette.primary
+    accentColor: palette.primary,
+    shadow: hasBackground
   });
   context.fillStyle = palette.primary;
-  roundRect(context, 78, 850, 330, 78, 39);
+  roundRect(context, 78, 850, 330, 78, 8);
   context.fill();
   context.fillStyle = "#071018";
   context.font = `900 ${sizes.cta}px Bahnschrift, Segoe UI, sans-serif`;
   context.fillText(slide.cta || "Conversemos", 112, 900);
 }
 
-function drawFreeSlide(context, slide, client, palette, sizes) {
+function drawFreeSlide(context, slide, client, palette, sizes, hasBackground) {
   if (slide.showDecorations) {
+    context.save();
+    context.translate(790, 820);
+    context.rotate(0.24);
     context.strokeStyle = hexToRgba(palette.primary, 0.52);
     context.lineWidth = 34;
-    context.beginPath();
-    context.arc(970, 950, 220, 0, Math.PI * 2);
-    context.stroke();
+    context.strokeRect(0, 0, 270, 270);
+    context.restore();
   }
   drawTextBlock(context, {
     eyebrow: slide.eyebrow,
@@ -580,11 +716,19 @@ function drawFreeSlide(context, slide, client, palette, sizes) {
     ctaSize: sizes.cta,
     titleColor: "#ffffff",
     bodyColor: "#e8f0ee",
-    accentColor: palette.primary
+    accentColor: palette.primary,
+    shadow: hasBackground
   });
 }
 
 function drawTextBlock(context, options) {
+  context.save();
+  if (options.shadow) {
+    context.shadowColor = "rgba(0,0,0,0.42)";
+    context.shadowBlur = 18;
+    context.shadowOffsetY = 8;
+  }
+
   context.fillStyle = options.accentColor;
   context.font = `900 ${options.eyebrowSize}px Bahnschrift, Segoe UI, sans-serif`;
   context.letterSpacing = "0px";
@@ -605,6 +749,8 @@ function drawTextBlock(context, options) {
     context.font = `900 ${options.ctaSize}px Bahnschrift, Segoe UI, sans-serif`;
     context.fillText(String(options.cta || "").toUpperCase(), options.x, 940);
   }
+
+  context.restore();
 }
 
 async function drawLogo(context, client, x, y, maxWidth, maxHeight) {
@@ -677,14 +823,6 @@ function wrapText(context, text, x, y, maxWidth, lineHeight, maxLines = 99) {
   return currentY;
 }
 
-function drawGlow(context, x, y, radius, color) {
-  const gradient = context.createRadialGradient(x, y, 0, x, y, radius);
-  gradient.addColorStop(0, color);
-  gradient.addColorStop(1, "rgba(0,0,0,0)");
-  context.fillStyle = gradient;
-  context.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-}
-
 function drawGrid(context) {
   context.save();
   context.globalAlpha = 0.12;
@@ -751,8 +889,7 @@ function hexToRgba(hex, alpha) {
 function bindEvents() {
   elements.clientSelect.addEventListener("change", () => {
     state.activeClientId = elements.clientSelect.value;
-    const project = state.projects.find((item) => item.clientId === state.activeClientId);
-    if (project) state.activeProjectId = project.id;
+    ensureActiveProjectForClient(state.activeClientId);
     activeSlideIndex = 0;
     render();
     scheduleAutosave();
@@ -787,6 +924,13 @@ function bindEvents() {
     await saveState();
   });
 
+  elements.logoWidthInput.addEventListener("input", () => {
+    const client = getActiveClient();
+    client.logoWidth = Number(elements.logoWidthInput.value);
+    renderCanvas();
+    scheduleAutosave();
+  });
+
   elements.newClientButton.addEventListener("click", () => {
     const client = {
       id: uid("client"),
@@ -796,6 +940,7 @@ function bindEvents() {
       secondaryColor: "#f0ecdc",
       darkColor: "#071018",
       accentColor: "#40d8ff",
+      logoWidth: 20,
       backgrounds: []
     };
     state.clients.push(client);
@@ -846,24 +991,33 @@ function bindEvents() {
   elements.bodyInput.addEventListener("input", () => updateSlide({ body: elements.bodyInput.value }));
   elements.ctaInput.addEventListener("input", () => updateSlide({ cta: elements.ctaInput.value }));
 
-  elements.backgroundInput.addEventListener("change", async () => {
-    const file = elements.backgroundInput.files[0];
-    if (!file) return;
-    const client = getActiveClient();
-    if (!Array.isArray(client.backgrounds)) client.backgrounds = [];
-    const background = {
-      id: uid("background"),
-      name: file.name.replace(/\.[^.]+$/, ""),
-      dataUrl: await readFileAsDataUrl(file)
-    };
-    client.backgrounds.push(background);
-    elements.backgroundInput.value = "";
-    updateSlide({ backgroundId: background.id, backgroundDataUrl: "" });
-    await saveState();
+  elements.backgroundList.addEventListener("click", (event) => {
+    const button = event.target.closest(".background-thumb");
+    if (!button) return;
+    updateSlide({ backgroundId: button.dataset.backgroundId, backgroundDataUrl: "" });
+    setStatus("Fondo aplicado a la lámina actual.");
   });
 
-  elements.backgroundSelect.addEventListener("change", () => {
-    updateSlide({ backgroundId: elements.backgroundSelect.value, backgroundDataUrl: "" });
+  elements.backgroundInput.addEventListener("change", async () => {
+    try {
+      const file = elements.backgroundInput.files[0];
+      if (!file) return;
+      const client = getActiveClient();
+      if (!Array.isArray(client.backgrounds)) client.backgrounds = [];
+      const background = {
+        id: uid("background"),
+        name: file.name.replace(/\.[^.]+$/, ""),
+        dataUrl: await readFileAsDataUrl(file)
+      };
+      client.backgrounds.push(background);
+      elements.backgroundInput.value = "";
+      updateSlide({ backgroundId: background.id, backgroundDataUrl: "" });
+      await saveState();
+      setStatus("Fondo agregado y aplicado a la lámina actual.");
+    } catch (error) {
+      elements.backgroundInput.value = "";
+      setStatus(`Error cargando fondo: ${error.message}`);
+    }
   });
 
   elements.addSlideButton.addEventListener("click", () => {
@@ -937,7 +1091,10 @@ function bindEvents() {
     }
   });
 
-  elements.clearBackgroundButton.addEventListener("click", () => updateSlide({ backgroundId: "", backgroundDataUrl: "" }));
+  elements.clearBackgroundButton.addEventListener("click", () => {
+    updateSlide({ backgroundId: "", backgroundDataUrl: "" });
+    setStatus("Fondo quitado de la lámina actual.");
+  });
 
   elements.exportCurrentButton.addEventListener("click", async () => {
     try {
@@ -977,6 +1134,7 @@ function createProject(clientId) {
 async function init() {
   const response = await fetch("/api/state");
   state = await response.json();
+  ensureActiveProjectForClient(state.activeClientId);
   bindEvents();
   render();
 }

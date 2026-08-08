@@ -41,6 +41,7 @@ const defaultState = {
       secondaryColor: "#f2f0e6",
       darkColor: "#071018",
       accentColor: "#40d8ff",
+      logoWidth: 20,
       backgrounds: []
     }
   ],
@@ -201,10 +202,18 @@ async function ensureDatabaseSchema() {
       secondary_color VARCHAR(20) NOT NULL,
       dark_color VARCHAR(20) NOT NULL,
       accent_color VARCHAR(20) NOT NULL,
+      logo_width INT NULL,
       backgrounds LONGTEXT NULL,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Backward-compatible migration for existing installations.
+  try {
+    await databasePool.query("ALTER TABLE clients ADD COLUMN logo_width INT NULL");
+  } catch {
+    // Column likely already exists.
+  }
 
   await databasePool.query(`
     CREATE TABLE IF NOT EXISTS projects (
@@ -254,6 +263,7 @@ async function loadStateFromDatabase() {
       secondaryColor: row.secondary_color,
       darkColor: row.dark_color,
       accentColor: row.accent_color,
+      logoWidth: Number(row.logo_width || 20),
       backgrounds: safeJsonParse(row.backgrounds, [])
     })),
     activeClientId: settings.activeClientId || clientRows[0].id,
@@ -288,8 +298,8 @@ async function saveStateToDatabase(state) {
     for (const client of nextState.clients) {
       await connection.query(
         `REPLACE INTO clients
-          (id, name, logo_data_url, logo_path, primary_color, secondary_color, dark_color, accent_color, backgrounds)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, name, logo_data_url, logo_path, primary_color, secondary_color, dark_color, accent_color, logo_width, backgrounds)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           client.id,
           client.name,
@@ -299,6 +309,7 @@ async function saveStateToDatabase(state) {
           client.secondaryColor || "#f0ecdc",
           client.darkColor || "#071018",
           client.accentColor || "#40d8ff",
+          Number(client.logoWidth || 20),
           JSON.stringify(client.backgrounds || [])
         ]
       );
@@ -372,6 +383,7 @@ function migrateState(state) {
     if (nextClient.id === "area3" && !nextClient.logoDataUrl && !nextClient.logoPath) {
       nextClient.logoPath = "/resources/img/area3.png";
     }
+    nextClient.logoWidth = Number(nextClient.logoWidth || 20);
     return nextClient;
   });
 

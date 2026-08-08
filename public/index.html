@@ -34,6 +34,10 @@
           Logo
           <input id="logoInput" type="file" accept="image/*">
         </label>
+        <label>
+          Ancho del logo
+          <input id="logoWidthInput" type="range" min="12" max="44" step="1" value="20">
+        </label>
       </section>
 
       <section class="panel">
@@ -74,6 +78,20 @@
       <section class="stage-layout">
         <div class="slide-list" id="slideList"></div>
 
+        <aside class="background-library" aria-label="Fondos del cliente">
+          <div class="library-heading">
+            <div>
+              <p class="panel-kicker">Biblioteca</p>
+              <h2>Fondos</h2>
+            </div>
+            <label class="upload-chip">
+              Subir
+              <input id="backgroundInput" type="file" accept="image/*">
+            </label>
+          </div>
+          <div class="background-list" id="backgroundList"></div>
+        </aside>
+
         <div class="stage-wrap">
           <article id="postCanvas" class="post-canvas template-cover-tech"></article>
           <p class="stage-note">Lo que ves dentro del cuadrado es lo que se exporta como imagen.</p>
@@ -113,14 +131,6 @@
             <label>
               CTA / firma
               <input id="ctaInput" type="text">
-            </label>
-            <label>
-              Biblioteca de fondos
-              <select id="backgroundSelect"></select>
-            </label>
-            <label>
-              Agregar fondo a biblioteca
-              <input id="backgroundInput" type="file" accept="image/*">
             </label>
             <button id="clearBackgroundButton" type="button">Quitar fondo de imagen</button>
           </section>
