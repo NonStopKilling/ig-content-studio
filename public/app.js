@@ -27,10 +27,58 @@ const templates = [
 ];
 
 let state;
+let currentUser = null;
 let activeSlideIndex = 0;
 let autosaveTimer = null;
+let dashboardView = "editor";
+let adminUsers = [];
+let adminClients = [];
 
 const elements = {
+  authShell: document.querySelector("#authShell"),
+  appShell: document.querySelector("#appShell"),
+  editorTopbar: document.querySelector("#editorTopbar"),
+  editorStage: document.querySelector("#editorStage"),
+  adminWorkspace: document.querySelector("#adminWorkspace"),
+  exportsWorkspace: document.querySelector("#exportsWorkspace"),
+  loginForm: document.querySelector("#loginForm"),
+  usernameInput: document.querySelector("#usernameInput"),
+  passwordInput: document.querySelector("#passwordInput"),
+  loginButton: document.querySelector("#loginButton"),
+  authStatus: document.querySelector("#authStatus"),
+  currentUserLabel: document.querySelector("#currentUserLabel"),
+  currentUserMeta: document.querySelector("#currentUserMeta"),
+  dashboardTabs: Array.from(document.querySelectorAll("[data-dashboard-tab]")),
+  adminClientsTab: document.querySelector("#adminClientsTab"),
+  logoutButton: document.querySelector("#logoutButton"),
+  adminReloadUsersButton: document.querySelector("#adminReloadUsersButton"),
+  adminUserForm: document.querySelector("#adminUserForm"),
+  adminUserIdInput: document.querySelector("#adminUserIdInput"),
+  adminUsernameInput: document.querySelector("#adminUsernameInput"),
+  adminEmailInput: document.querySelector("#adminEmailInput"),
+  adminUserRoleSelect: document.querySelector("#adminUserRoleSelect"),
+  adminUserClientLabel: document.querySelector("#adminUserClientLabel"),
+  adminUserPasswordInput: document.querySelector("#adminUserPasswordInput"),
+  adminUserActiveInput: document.querySelector("#adminUserActiveInput"),
+  adminUserResetButton: document.querySelector("#adminUserResetButton"),
+  adminUsersList: document.querySelector("#adminUsersList"),
+  adminClientsList: document.querySelector("#adminClientsList"),
+  adminCreateClientButton: document.querySelector("#adminCreateClientButton"),
+  adminDeleteClientButton: document.querySelector("#adminDeleteClientButton"),
+  adminClientForm: document.querySelector("#adminClientForm"),
+  adminEditingClientId: document.querySelector("#adminEditingClientId"),
+  adminClientNameInput: document.querySelector("#adminClientNameInput"),
+  adminPrimaryColorInput: document.querySelector("#adminPrimaryColorInput"),
+  adminSecondaryColorInput: document.querySelector("#adminSecondaryColorInput"),
+  adminDarkColorInput: document.querySelector("#adminDarkColorInput"),
+  adminAccentColorInput: document.querySelector("#adminAccentColorInput"),
+  adminLogoInput: document.querySelector("#adminLogoInput"),
+  adminLogoPreview: document.querySelector("#adminLogoPreview"),
+  adminLogoWidthInput: document.querySelector("#adminLogoWidthInput"),
+  adminSaveClientButton: document.querySelector("#adminSaveClientButton"),
+  clientPanel: document.querySelector("#clientPanel"),
+  projectPanel: document.querySelector("#projectPanel"),
+  projectLibraryPanel: document.querySelector("#projectLibraryPanel"),
   clientSelect: document.querySelector("#clientSelect"),
   clientNameInput: document.querySelector("#clientNameInput"),
   primaryColorInput: document.querySelector("#primaryColorInput"),
@@ -40,9 +88,12 @@ const elements = {
   logoInput: document.querySelector("#logoInput"),
   logoWidthInput: document.querySelector("#logoWidthInput"),
   newClientButton: document.querySelector("#newClientButton"),
+  deleteClientButton: document.querySelector("#deleteClientButton"),
   projectSelect: document.querySelector("#projectSelect"),
   projectNameInput: document.querySelector("#projectNameInput"),
   newProjectButton: document.querySelector("#newProjectButton"),
+  projectSummary: document.querySelector("#projectSummary"),
+  projectList: document.querySelector("#projectList"),
   saveButton: document.querySelector("#saveButton"),
   exportJsonButton: document.querySelector("#exportJsonButton"),
   exportAllButton: document.querySelector("#exportAllButton"),
@@ -64,7 +115,16 @@ const elements = {
   clearBackgroundButton: document.querySelector("#clearBackgroundButton"),
   formatSelect: document.querySelector("#formatSelect"),
   qualityInput: document.querySelector("#qualityInput"),
-  statusBox: document.querySelector("#statusBox")
+  statusBox: document.querySelector("#statusBox"),
+  exportsFormatSelect: document.querySelector("#exportsFormatSelect"),
+  exportsQualityInput: document.querySelector("#exportsQualityInput"),
+  exportsCurrentButton: document.querySelector("#exportsCurrentButton"),
+  exportsAllButton: document.querySelector("#exportsAllButton"),
+  exportsJsonButton: document.querySelector("#exportsJsonButton"),
+  exportConfigCsvButton: document.querySelector("#exportConfigCsvButton"),
+  configCsvInput: document.querySelector("#configCsvInput"),
+  exportsOpsStatus: document.querySelector("#exportsOpsStatus"),
+  adminOpsStatus: document.querySelector("#adminOpsStatus")
 };
 
 function uid(prefix) {
@@ -75,8 +135,96 @@ function getActiveClient() {
   return state.clients.find((client) => client.id === state.activeClientId) || state.clients[0];
 }
 
+function inferStatusKind(message, fallback = "info") {
+  const text = String(message || "").toLowerCase();
+  if (text.includes("error") || text.includes("no se pudo") || text.includes("inval") || text.includes("fall") || text.includes("no autorizado")) {
+    return "error";
+  }
+  if (text.includes("guardad") || text.includes("cread") || text.includes("actualiz") || text.includes("eliminad") || text.includes("exportad") || text.includes("importad") || text.includes("sesion iniciada") || text.includes("listo")) {
+    return "success";
+  }
+  return fallback;
+}
+
+function applyStatusState(element, message, kind = "info") {
+  if (!element) return;
+  element.textContent = message;
+  element.classList.remove("status-success", "status-error", "status-info");
+  element.classList.add(`status-${kind}`);
+}
+
+function setAuthStatus(message, kind = inferStatusKind(message, "info")) {
+  applyStatusState(elements.authStatus, message, kind);
+}
+
+function showAuthShell() {
+  elements.authShell.hidden = false;
+  elements.appShell.hidden = true;
+}
+
+function showAppShell() {
+  elements.authShell.hidden = true;
+  elements.appShell.hidden = false;
+}
+
+function updateUserPanel() {
+  if (!currentUser) return;
+  elements.currentUserLabel.textContent = currentUser.username;
+  const roleLabel = currentUser.role === "admin" ? "Admin" : "Cliente";
+  elements.currentUserMeta.textContent = `${roleLabel}${currentUser.clientId ? ` · ${currentUser.clientId}` : ""}`;
+  const isAdmin = currentUser.role === "admin";
+  elements.newClientButton.hidden = !isAdmin;
+  elements.clientSelect.disabled = !isAdmin;
+  elements.adminClientsTab.hidden = !isAdmin;
+  if (!isAdmin && dashboardView === "admin-clients") {
+    dashboardView = "editor";
+  }
+}
+
+function renderDashboardLayout() {
+  const isAdmin = currentUser && currentUser.role === "admin";
+  const showAdminClients = dashboardView === "admin-clients" && isAdmin;
+  const showExportsWorkspace = dashboardView === "exports";
+  const showEditorWorkspace = !showAdminClients && !showExportsWorkspace;
+
+  if (elements.appShell) {
+    elements.appShell.dataset.dashboardView = dashboardView;
+  }
+
+  if (elements.editorTopbar) {
+    elements.editorTopbar.hidden = !showEditorWorkspace;
+  }
+  if (elements.editorStage) {
+    elements.editorStage.hidden = !showEditorWorkspace;
+  }
+  if (elements.adminWorkspace) {
+    elements.adminWorkspace.hidden = !showAdminClients;
+  }
+  if (elements.exportsWorkspace) {
+    elements.exportsWorkspace.hidden = !showExportsWorkspace;
+  }
+
+  if (elements.clientPanel) {
+    elements.clientPanel.hidden = showAdminClients || showExportsWorkspace;
+  }
+  if (elements.projectPanel) {
+    elements.projectPanel.hidden = showAdminClients;
+  }
+  if (elements.projectLibraryPanel) {
+    elements.projectLibraryPanel.hidden = showAdminClients || showExportsWorkspace;
+  }
+
+  elements.dashboardTabs.forEach((button) => {
+    button.classList.toggle("active", button.dataset.dashboardTab === dashboardView);
+  });
+}
+
 function getActiveProject() {
   return state.projects.find((project) => project.id === state.activeProjectId) || state.projects[0];
+}
+
+function getProjectsForActiveClient() {
+  return state.projects.filter((project) => project.clientId === state.activeClientId);
 }
 
 function ensureActiveProjectForClient(clientId) {
@@ -146,8 +294,241 @@ function normalizeImportedSlide(item, index) {
   };
 }
 
-function setStatus(message) {
-  elements.statusBox.textContent = message;
+function setStatus(message, kind = inferStatusKind(message, "info")) {
+  applyStatusState(elements.statusBox, message, kind);
+  applyStatusState(elements.adminOpsStatus, message, kind);
+}
+
+function setExportsStatus(message, kind = inferStatusKind(message, "info")) {
+  applyStatusState(elements.exportsOpsStatus, message, kind);
+}
+
+function renderAdminUserClientOptions() {
+  if (!elements.adminUserClientLabel || !state?.activeClientId) return;
+  const activeClient = state.clients.find((client) => client.id === state.activeClientId);
+  elements.adminUserClientLabel.value = activeClient ? `${activeClient.name} (${activeClient.id})` : "Sin cliente";
+}
+
+function toggleAdminClientSelectByRole() {
+  if (!elements.adminUserRoleSelect || !elements.adminUserClientLabel) return;
+  const role = elements.adminUserRoleSelect.value;
+  if (role === "admin") {
+    elements.adminUserClientLabel.value = "Global (sin cliente)";
+    return;
+  }
+
+  renderAdminUserClientOptions();
+}
+
+function syncAdminUserClientWithActiveClient(options = {}) {
+  if (!elements.adminUserClientLabel || !state?.activeClientId) return;
+  const { force = false } = options;
+  if (!force && elements.adminUserRoleSelect?.value === "admin") return;
+  renderAdminUserClientOptions();
+}
+
+function renderAdminClientForm() {
+  if (!state || !elements.adminClientForm) return;
+  const client = getActiveClient();
+  if (!client) return;
+
+  if (elements.adminEditingClientId) {
+    elements.adminEditingClientId.textContent = `ID: ${client.id}`;
+  }
+
+  elements.adminClientNameInput.value = client.name || "";
+  elements.adminPrimaryColorInput.value = client.primaryColor || "#9bd80d";
+  elements.adminSecondaryColorInput.value = client.secondaryColor || "#f0ecdc";
+  elements.adminDarkColorInput.value = client.darkColor || "#071018";
+  elements.adminAccentColorInput.value = client.accentColor || "#40d8ff";
+  elements.adminLogoWidthInput.value = String(Math.round(Number(client.logoWidth || 20)));
+  if (elements.adminLogoPreview) {
+    const logoSource = client.logoDataUrl || client.logoPath || "";
+    elements.adminLogoPreview.innerHTML = logoSource
+      ? `<img src="${logoSource}" alt="Logo ${escapeHtml(client.name)}">`
+      : "Sin logo";
+  }
+}
+
+function resetAdminUserForm() {
+  if (!elements.adminUserForm) return;
+
+  elements.adminUserIdInput.value = "";
+  elements.adminUsernameInput.value = "";
+  elements.adminEmailInput.value = "";
+  elements.adminUserRoleSelect.value = "cliente";
+  elements.adminUserPasswordInput.value = "";
+  elements.adminUserActiveInput.checked = true;
+  renderAdminUserClientOptions();
+  syncAdminUserClientWithActiveClient({ force: true });
+  toggleAdminClientSelectByRole();
+}
+
+function fillAdminUserForm(user) {
+  elements.adminUserIdInput.value = user.id;
+  elements.adminUsernameInput.value = user.username;
+  elements.adminEmailInput.value = user.email || "";
+  elements.adminUserRoleSelect.value = user.role;
+  if (elements.adminUserClientLabel && user.role === "admin") {
+    elements.adminUserClientLabel.value = "Global (sin cliente)";
+  } else if (elements.adminUserClientLabel && user.clientId) {
+    const userClient = state.clients.find((client) => client.id === user.clientId);
+    elements.adminUserClientLabel.value = userClient ? `${userClient.name} (${userClient.id})` : user.clientId;
+  } else {
+    syncAdminUserClientWithActiveClient({ force: true });
+  }
+  elements.adminUserPasswordInput.value = "";
+  elements.adminUserActiveInput.checked = user.isActive !== false;
+  toggleAdminClientSelectByRole();
+}
+
+function renderAdminUsersList() {
+  if (!elements.adminUsersList) return;
+
+  const visibleUsers = adminUsers.filter((user) => user.role === "admin" || user.clientId === state.activeClientId);
+
+  if (!visibleUsers.length) {
+    elements.adminUsersList.innerHTML = `
+      <div class="project-empty">
+        <strong>Sin usuarios</strong>
+        <span>Crea el primer usuario para este cliente</span>
+      </div>
+    `;
+    return;
+  }
+
+  elements.adminUsersList.innerHTML = visibleUsers
+    .map((user) => {
+      const clientName = user.clientId
+        ? (adminClients.find((client) => client.id === user.clientId)?.name || user.clientId)
+        : "Global";
+      const roleLabel = user.role === "admin" ? "Admin" : "Cliente";
+      const loginLabel = user.email ? `${user.username} / ${user.email}` : user.username;
+
+      return `
+        <article class="project-card ${user.isActive === false ? "user-disabled" : ""}">
+          <div>
+            <span class="project-name">${escapeHtml(loginLabel)}</span>
+            <span class="project-meta">${roleLabel} · ${escapeHtml(clientName)} · ${user.isActive === false ? "Inactivo" : "Activo"}</span>
+          </div>
+          <div class="project-actions">
+            <button type="button" data-user-action="edit" data-user-id="${user.id}">Editar</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderAdminClientsList() {
+  if (!elements.adminClientsList || !state || !Array.isArray(state.clients)) return;
+
+  if (!state.clients.length) {
+    elements.adminClientsList.innerHTML = `
+      <div class="project-empty">
+        <strong>Sin clientes</strong>
+        <span>Crea el primer cliente para comenzar.</span>
+      </div>
+    `;
+    return;
+  }
+
+  elements.adminClientsList.innerHTML = state.clients
+    .map((client) => {
+      const isActive = client.id === state.activeClientId;
+      const projectsCount = state.projects.filter((project) => project.clientId === client.id).length;
+      const usersCount = adminUsers.filter((user) => user.clientId === client.id).length;
+      return `
+        <article class="project-card ${isActive ? "active" : ""}">
+          <div class="admin-client-item-head">
+            ${client.logoDataUrl || client.logoPath ? `<img class="admin-client-mini-logo" src="${client.logoDataUrl || client.logoPath}" alt="${escapeHtml(client.name)}">` : `<span class="admin-client-mini-logo admin-client-mini-logo-empty">Sin logo</span>`}
+          </div>
+          <div>
+            <span class="project-name">${escapeHtml(client.name)}</span>
+            <span class="project-meta">ID: ${escapeHtml(client.id)} · ${projectsCount} proyectos · ${usersCount} usuarios</span>
+          </div>
+          <div class="project-actions">
+            <button type="button" data-client-action="edit" data-client-id="${client.id}">Editar</button>
+            <button type="button" data-client-action="delete" data-client-id="${client.id}">Eliminar</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function createClientEntity() {
+  return {
+    id: uid("client"),
+    name: "Nuevo cliente",
+    logoDataUrl: "",
+    logoPath: "",
+    primaryColor: "#9bd80d",
+    secondaryColor: "#f0ecdc",
+    darkColor: "#071018",
+    accentColor: "#40d8ff",
+    logoWidth: 20,
+    backgrounds: []
+  };
+}
+
+function createClientWithProject() {
+  const client = createClientEntity();
+  state.clients.push(client);
+  state.activeClientId = client.id;
+  const project = createProject(client.id);
+  state.projects.push(project);
+  state.activeProjectId = project.id;
+  activeSlideIndex = 0;
+  render();
+  renderAdminClientsList();
+  scheduleAutosave();
+  setStatus(`Cliente creado: ${client.name}`);
+}
+
+function deleteClientById(clientId) {
+  if (!state || !Array.isArray(state.clients)) return;
+  if (state.clients.length <= 1) {
+    setStatus("Debes mantener al menos un cliente activo.");
+    return;
+  }
+
+  const client = state.clients.find((item) => item.id === clientId);
+  if (!client) return;
+
+  const linkedUsers = adminUsers.filter((user) => user.clientId === client.id).length;
+  const warning = linkedUsers
+    ? `Este cliente tiene ${linkedUsers} usuarios asociados. Eliminalo solo si ya reasignaste esos usuarios.`
+    : "";
+  const confirmed = window.confirm(`Eliminar "${client.name}" y todos sus proyectos? Esta accion no se puede deshacer. ${warning}`.trim());
+  if (!confirmed) return;
+
+  state.clients = state.clients.filter((item) => item.id !== client.id);
+  state.projects = state.projects.filter((project) => project.clientId !== client.id);
+
+  if (!state.clients.some((item) => item.id === state.activeClientId)) {
+    state.activeClientId = state.clients[0].id;
+  }
+  ensureActiveProjectForClient(state.activeClientId);
+  activeSlideIndex = 0;
+  render();
+  renderAdminClientsList();
+  scheduleAutosave();
+  setStatus(`Cliente eliminado: ${client.name}`);
+}
+
+async function loadAdminUsers() {
+  const response = await fetch("/api/admin/users");
+  const payload = await response.json().catch(() => ({ ok: false, error: "No se pudieron cargar usuarios." }));
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error || "No se pudieron cargar usuarios.");
+  }
+
+  adminUsers = Array.isArray(payload.users) ? payload.users : [];
+  adminClients = Array.isArray(payload.clients) ? payload.clients : [];
+  renderAdminUserClientOptions();
+  toggleAdminClientSelectByRole();
+  renderAdminUsersList();
 }
 
 function escapeHtml(value) {
@@ -198,6 +579,55 @@ function renderClientForm() {
 function renderProjectForm() {
   const project = getActiveProject();
   elements.projectNameInput.value = project.name;
+}
+
+function formatDateTime(value) {
+  if (!value) return "Sin actividad";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Sin actividad";
+  return parsed.toLocaleString("es-CL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function renderProjectLibrary() {
+  const projects = getProjectsForActiveClient();
+  elements.projectSummary.textContent = `${projects.length} guardados`;
+
+  if (!projects.length) {
+    elements.projectList.innerHTML = `
+      <div class="project-empty">
+        <strong>Sin carruseles</strong>
+        <span>Crea tu primer proyecto</span>
+      </div>
+    `;
+    return;
+  }
+
+  elements.projectList.innerHTML = projects
+    .slice()
+    .sort((left, right) => new Date(right.updatedAt || 0).getTime() - new Date(left.updatedAt || 0).getTime())
+    .map((project) => {
+      const isActive = project.id === state.activeProjectId;
+      const slideCount = Array.isArray(project.slides) ? project.slides.length : 0;
+      return `
+        <article class="project-card ${isActive ? "active" : ""}" data-project-id="${project.id}">
+          <button class="project-open" type="button" data-action="open" data-project-id="${project.id}">
+            <span class="project-name">${escapeHtml(project.name)}</span>
+            <span class="project-meta">${slideCount} láminas · ${escapeHtml(formatDateTime(project.updatedAt))}</span>
+          </button>
+          <div class="project-actions">
+            <button type="button" data-action="duplicate" data-project-id="${project.id}">Duplicar</button>
+            <button type="button" data-action="delete" data-project-id="${project.id}">Eliminar</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderSlideList() {
@@ -327,6 +757,12 @@ function render() {
   renderSelectors();
   renderClientForm();
   renderProjectForm();
+  updateUserPanel();
+  renderDashboardLayout();
+  renderAdminClientForm();
+  syncAdminUserClientWithActiveClient();
+  renderAdminClientsList();
+  renderProjectLibrary();
   renderSlideList();
   renderBackgroundLibrary();
   renderInspector();
@@ -352,6 +788,37 @@ async function readFileAsDataUrl(file) {
   });
 }
 
+async function uploadBackgroundFiles(fileList) {
+  const files = Array.from(fileList || []).filter((file) => file.type.startsWith("image/"));
+  if (!files.length) {
+    setStatus("No se detectaron imagenes validas para subir.");
+    return;
+  }
+
+  const client = getActiveClient();
+  if (!Array.isArray(client.backgrounds)) client.backgrounds = [];
+
+  const uploadedBackgrounds = [];
+  for (const file of files) {
+    const background = {
+      id: uid("background"),
+      name: file.name.replace(/\.[^.]+$/, ""),
+      dataUrl: await readFileAsDataUrl(file)
+    };
+    client.backgrounds.push(background);
+    uploadedBackgrounds.push(background);
+  }
+
+  const firstBackground = uploadedBackgrounds[0];
+  if (firstBackground) {
+    updateSlide({ backgroundId: firstBackground.id, backgroundDataUrl: "" });
+  }
+
+  await saveState();
+  const plural = uploadedBackgrounds.length === 1 ? "fondo" : "fondos";
+  setStatus(`${uploadedBackgrounds.length} ${plural} subidos y biblioteca actualizada.`);
+}
+
 async function saveState(options = {}) {
   const response = await fetch("/api/state", {
     method: "POST",
@@ -375,6 +842,238 @@ async function saveState(options = {}) {
   }
 }
 
+function getSelectedExportFormat() {
+  if (dashboardView === "exports" && elements.exportsFormatSelect) {
+    return elements.exportsFormatSelect.value;
+  }
+  if (elements.formatSelect) {
+    return elements.formatSelect.value;
+  }
+  return elements.exportsFormatSelect ? elements.exportsFormatSelect.value : "jpeg";
+}
+
+function getSelectedExportQuality() {
+  if (dashboardView === "exports" && elements.exportsQualityInput) {
+    return Number(elements.exportsQualityInput.value);
+  }
+  if (elements.qualityInput) {
+    return Number(elements.qualityInput.value);
+  }
+  return elements.exportsQualityInput ? Number(elements.exportsQualityInput.value) : 0.92;
+}
+
+function exportActiveProjectAsJson() {
+  const project = getActiveProject();
+  const client = getActiveClient();
+  downloadJson(
+    {
+      name: project.name,
+      client: {
+        id: client.id,
+        name: client.name,
+        primaryColor: client.primaryColor,
+        secondaryColor: client.secondaryColor,
+        darkColor: client.darkColor,
+        accentColor: client.accentColor
+      },
+      slides: project.slides
+    },
+    `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "content-studio"}.json`
+  );
+}
+
+function escapeCsvValue(value) {
+  const text = String(value ?? "");
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      const nextChar = line[index + 1];
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current);
+  return cells;
+}
+
+function parseConfigCsv(text) {
+  const rows = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(parseCsvLine);
+
+  if (!rows.length) return [];
+  const header = rows[0].map((item) => item.trim().toLowerCase());
+  if (header.join(",") !== "scope,key,value") {
+    throw new Error("El CSV debe tener cabecera: scope,key,value");
+  }
+
+  return rows.slice(1).map((row) => ({
+    scope: String(row[0] || "").trim().toLowerCase(),
+    key: String(row[1] || "").trim(),
+    value: String(row[2] || "")
+  }));
+}
+
+function exportConfigCsv() {
+  const client = getActiveClient();
+  const project = getActiveProject();
+
+  const rows = [
+    ["scope", "key", "value"],
+    ["client", "id", client.id],
+    ["client", "name", client.name],
+    ["client", "primaryColor", client.primaryColor],
+    ["client", "secondaryColor", client.secondaryColor],
+    ["client", "darkColor", client.darkColor],
+    ["client", "accentColor", client.accentColor],
+    ["client", "logoWidth", String(client.logoWidth || 20)],
+    ["project", "id", project.id],
+    ["project", "name", project.name]
+  ];
+
+  const csv = `${rows.map((row) => row.map(escapeCsvValue).join(",")).join("\n")}\n`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "content-config"}-config.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function importConfigCsv(file) {
+  const rows = parseConfigCsv(await file.text());
+  const client = getActiveClient();
+  const project = getActiveProject();
+
+  rows.forEach((row) => {
+    if (row.scope === "client") {
+      if (row.key === "name") client.name = row.value || client.name;
+      if (row.key === "primaryColor") client.primaryColor = row.value || client.primaryColor;
+      if (row.key === "secondaryColor") client.secondaryColor = row.value || client.secondaryColor;
+      if (row.key === "darkColor") client.darkColor = row.value || client.darkColor;
+      if (row.key === "accentColor") client.accentColor = row.value || client.accentColor;
+      if (row.key === "logoWidth") {
+        const numericWidth = Number(row.value);
+        if (!Number.isNaN(numericWidth)) {
+          client.logoWidth = Math.max(12, Math.min(44, numericWidth));
+        }
+      }
+    }
+
+    if (row.scope === "project") {
+      if (row.key === "name") project.name = row.value || project.name;
+    }
+  });
+
+  project.updatedAt = new Date().toISOString();
+  render();
+  await saveState();
+}
+
+async function importProjectFromJsonFile(file) {
+  const payload = JSON.parse(await file.text());
+  const importedItems = Array.isArray(payload) ? payload : payload.slides || payload.laminas || payload.posts;
+  if (!Array.isArray(importedItems) || importedItems.length === 0) {
+    throw new Error("El JSON debe incluir un arreglo en slides, laminas, posts o ser un arreglo directo.");
+  }
+
+  const project = {
+    id: uid("project"),
+    clientId: getActiveClient().id,
+    name: payload.name || payload.nombre || `Contenido importado ${new Date().toLocaleDateString("es-CL")}`,
+    updatedAt: new Date().toISOString(),
+    slides: importedItems.map(normalizeImportedSlide)
+  };
+
+  state.projects.push(project);
+  state.activeProjectId = project.id;
+  activeSlideIndex = 0;
+  render();
+  await saveState();
+  return project;
+}
+
+async function fetchCurrentUser() {
+  const response = await fetch("/api/auth/me");
+  if (!response.ok) return null;
+  const payload = await response.json();
+  return payload.authenticated ? payload.user : null;
+}
+
+async function loadAppState() {
+  const response = await fetch("/api/state");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: "No se pudo cargar el estado." }));
+    throw new Error(payload.error || "No se pudo cargar el estado.");
+  }
+  state = await response.json();
+  ensureActiveProjectForClient(state.activeClientId);
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  setAuthStatus("Validando acceso...");
+
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: elements.usernameInput.value,
+      password: elements.passwordInput.value
+    })
+  });
+
+  const payload = await response.json().catch(() => ({ error: "No se pudo iniciar sesión." }));
+  if (!response.ok) {
+    throw new Error(payload.error || "No se pudo iniciar sesión.");
+  }
+
+  currentUser = payload.user;
+  await loadAppState();
+  showAppShell();
+  render();
+  elements.passwordInput.value = "";
+  setStatus(`Sesión iniciada como ${currentUser.username}.`);
+}
+
+async function handleLogout() {
+  await fetch("/api/auth/logout", { method: "POST" });
+  currentUser = null;
+  state = null;
+  showAuthShell();
+  setAuthStatus("Sesión cerrada.");
+}
+
 function scheduleAutosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(async () => {
@@ -396,6 +1095,27 @@ function downloadDataUrl(dataUrl, fileName) {
   link.remove();
 }
 
+async function downloadExportFile(fileName) {
+  const response = await fetch(`/api/export/file/${encodeURIComponent(fileName)}`, {
+    credentials: "same-origin"
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `No se pudo descargar ${fileName}.`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
 function downloadJson(payload, fileName) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -414,9 +1134,9 @@ async function exportCanvas(slideIndex = activeSlideIndex, shouldDownload = true
   activeSlideIndex = slideIndex;
   render();
 
-  const format = elements.formatSelect.value;
-  const quality = Number(elements.qualityInput.value);
-  const dataUrl = await renderSlideToImage(getActiveSlide(), getActiveClient(), format, quality);
+  const format = getSelectedExportFormat();
+  const quality = getSelectedExportQuality();
+  const dataUrl = await renderExportImage(format, quality);
   const response = await fetch("/api/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -434,12 +1154,195 @@ async function exportCanvas(slideIndex = activeSlideIndex, shouldDownload = true
   }
 
   if (shouldDownload) {
-    downloadDataUrl(dataUrl, result.fileName);
+    await downloadExportFile(result.fileName);
   }
 
   activeSlideIndex = originalIndex;
   render();
   return result.filePath;
+}
+
+function waitNextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+async function waitForImagesReady(root) {
+  const images = Array.from(root.querySelectorAll("img"));
+  if (!images.length) return;
+
+  await Promise.all(images.map((image) => {
+    if (image.complete && image.naturalWidth > 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        image.removeEventListener("load", done);
+        image.removeEventListener("error", done);
+        resolve();
+      };
+      image.addEventListener("load", done, { once: true });
+      image.addEventListener("error", done, { once: true });
+    });
+  }));
+}
+
+function createExportCaptureNode(source) {
+  const rect = source.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  const host = document.createElement("div");
+  host.style.position = "fixed";
+  host.style.left = "-20000px";
+  host.style.top = "0";
+  host.style.width = `${width}px`;
+  host.style.height = `${height}px`;
+  host.style.pointerEvents = "none";
+  host.style.overflow = "hidden";
+  host.setAttribute("aria-hidden", "true");
+
+  const clone = source.cloneNode(true);
+  clone.style.width = `${width}px`;
+  clone.style.height = `${height}px`;
+  clone.style.maxWidth = "none";
+  clone.style.maxHeight = "none";
+  clone.style.margin = "0";
+  clone.style.transform = "none";
+
+  host.appendChild(clone);
+  document.body.appendChild(host);
+
+  return {
+    node: clone,
+    width,
+    height,
+    cleanup: () => {
+      host.remove();
+    }
+  };
+}
+
+function collectPageCssText() {
+  const rules = [];
+  for (const styleSheet of Array.from(document.styleSheets)) {
+    try {
+      for (const rule of Array.from(styleSheet.cssRules || [])) {
+        rules.push(rule.cssText);
+      }
+    } catch {
+      // Ignore stylesheets that browser blocks from script access.
+    }
+  }
+  return rules.join("\n");
+}
+
+async function renderExportImage(format, quality) {
+  const errors = [];
+
+  // Preferred path: html2canvas captures the rendered DOM with better fidelity.
+  const html2canvasFn = globalThis.html2canvas;
+  if (typeof html2canvasFn === "function") {
+    try {
+      return await renderPostCanvasWithHtml2Canvas(html2canvasFn, format, quality);
+    } catch (error) {
+      errors.push(`html2canvas: ${error.message}`);
+      // Continue with fallbacks.
+    }
+  }
+
+  try {
+    return await renderPostCanvasToImage(format, quality);
+  } catch (error) {
+    errors.push(`svg-snapshot: ${error.message}`);
+  }
+
+  try {
+    // Keeps export available when a third-party image prevents DOM capture.
+    return await renderSlideToImage(getActiveSlide(), getActiveClient(), format, quality);
+  } catch (error) {
+    errors.push(`legacy-renderer: ${error.message}`);
+    throw new Error(`No se pudo exportar la lamina. Detalle: ${errors.join(" | ")}`);
+  }
+}
+
+async function renderPostCanvasWithHtml2Canvas(html2canvasFn, format, quality) {
+  await document.fonts.ready;
+  await waitNextFrame();
+
+  const source = elements.postCanvas;
+  if (!source) throw new Error("No se encontro el canvas visual para exportar.");
+
+  await waitForImagesReady(source);
+  const capture = createExportCaptureNode(source);
+
+  try {
+    const capturedCanvas = await html2canvasFn(capture.node, {
+      backgroundColor: null,
+      useCORS: true,
+      allowTaint: false,
+      scale: Math.max(2, window.devicePixelRatio || 1),
+      width: capture.width,
+      height: capture.height,
+      logging: false,
+      imageTimeout: 15000,
+      removeContainer: true
+    });
+
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = 1080;
+    outputCanvas.height = 1080;
+    const outputContext = outputCanvas.getContext("2d");
+    if (!outputContext) throw new Error("No se pudo crear el contexto de salida.");
+    outputContext.drawImage(capturedCanvas, 0, 0, 1080, 1080);
+    return outputCanvas.toDataURL(`image/${format}`, format === "jpeg" ? quality : undefined);
+  } finally {
+    capture.cleanup();
+  }
+}
+
+async function renderPostCanvasToImage(format, quality) {
+  await document.fonts.ready;
+  await waitNextFrame();
+
+  const source = elements.postCanvas;
+  if (!source) throw new Error("No se encontro el canvas visual para exportar.");
+
+  await waitForImagesReady(source);
+  const capture = createExportCaptureNode(source);
+
+  const wrapper = document.createElement("div");
+  wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  wrapper.style.width = `${capture.width}px`;
+  wrapper.style.height = `${capture.height}px`;
+  wrapper.style.margin = "0";
+  wrapper.style.padding = "0";
+  wrapper.style.overflow = "hidden";
+  wrapper.appendChild(capture.node);
+
+  const cssText = collectPageCssText();
+  const markup = new XMLSerializer().serializeToString(wrapper);
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${capture.width}" height="${capture.height}" viewBox="0 0 ${capture.width} ${capture.height}">`,
+    '<foreignObject width="100%" height="100%">',
+    `<style>${cssText}</style>`,
+    markup,
+    "</foreignObject>",
+    "</svg>"
+  ].join("");
+
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const image = await loadImage(url);
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = 1080;
+    outputCanvas.height = 1080;
+    const outputContext = outputCanvas.getContext("2d");
+    if (!outputContext) throw new Error("No se pudo crear el contexto de salida.");
+    outputContext.drawImage(image, 0, 0, 1080, 1080);
+    return outputCanvas.toDataURL(`image/${format}`, format === "jpeg" ? quality : undefined);
+  } finally {
+    capture.cleanup();
+    URL.revokeObjectURL(url);
+  }
 }
 
 async function renderSlideToImage(slide, client, format, quality) {
@@ -887,6 +1790,263 @@ function hexToRgba(hex, alpha) {
 }
 
 function bindEvents() {
+  elements.loginForm.addEventListener("submit", async (event) => {
+    try {
+      await handleLogin(event);
+    } catch (error) {
+      setAuthStatus(error.message);
+    }
+  });
+
+  elements.logoutButton.addEventListener("click", async () => {
+    await handleLogout();
+  });
+
+  elements.dashboardTabs.forEach((button) => {
+    button.addEventListener("click", async () => {
+      const selectedView = button.dataset.dashboardTab;
+      if (!selectedView) return;
+
+      if (selectedView === "admin-clients") {
+        if (currentUser?.role !== "admin") return;
+        dashboardView = "admin-clients";
+        renderDashboardLayout();
+        try {
+          await loadAdminUsers();
+          resetAdminUserForm();
+          renderAdminClientsList();
+          setStatus("Vista admin: clientes y usuarios listos para administrar.");
+        } catch (error) {
+          setStatus(`Error cargando panel admin: ${error.message}`);
+        }
+        return;
+      }
+
+      dashboardView = selectedView;
+      renderDashboardLayout();
+      if (selectedView !== "editor") {
+        setStatus(`Vista \"${button.textContent.trim()}\" enfocada para trabajo en ultrawide.`);
+      }
+    });
+  });
+
+  if (elements.adminReloadUsersButton) {
+    elements.adminReloadUsersButton.addEventListener("click", async () => {
+      try {
+        await loadAdminUsers();
+        renderAdminClientsList();
+        setStatus("Listado de usuarios actualizado.");
+      } catch (error) {
+        setStatus(`Error actualizando usuarios: ${error.message}`);
+      }
+    });
+  }
+
+  if (elements.adminCreateClientButton) {
+    elements.adminCreateClientButton.addEventListener("click", () => {
+      createClientWithProject();
+      renderAdminClientForm();
+    });
+  }
+
+  if (elements.adminDeleteClientButton) {
+    elements.adminDeleteClientButton.addEventListener("click", () => {
+      deleteClientById(state.activeClientId);
+    });
+  }
+
+  if (elements.adminClientsList) {
+    elements.adminClientsList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-client-action]");
+      if (!button) return;
+
+      const clientId = button.dataset.clientId;
+      const action = button.dataset.clientAction;
+      if (!clientId || !action) return;
+
+      if (action === "edit") {
+        state.activeClientId = clientId;
+        ensureActiveProjectForClient(clientId);
+        activeSlideIndex = 0;
+        render();
+        syncAdminUserClientWithActiveClient({ force: true });
+        setStatus("Cliente seleccionado. Edita y guarda desde el formulario de cliente.");
+        return;
+      }
+
+      if (action === "delete") {
+        deleteClientById(clientId);
+      }
+    });
+  }
+
+  if (elements.adminUserRoleSelect) {
+    elements.adminUserRoleSelect.addEventListener("change", () => {
+      toggleAdminClientSelectByRole();
+    });
+  }
+
+  if (elements.adminUserResetButton) {
+    elements.adminUserResetButton.addEventListener("click", () => {
+      resetAdminUserForm();
+      setStatus("Formulario de usuario reiniciado.");
+    });
+  }
+
+  if (elements.adminUsersList) {
+    elements.adminUsersList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-user-action]");
+      if (!button) return;
+      const userId = button.dataset.userId;
+      const user = adminUsers.find((item) => item.id === userId);
+      if (!user) return;
+      fillAdminUserForm(user);
+      setStatus(`Editando usuario: ${user.username}`);
+    });
+  }
+
+  if (elements.adminUserForm) {
+    elements.adminUserForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const userId = elements.adminUserIdInput.value.trim();
+      const payload = {
+        username: elements.adminUsernameInput.value.trim(),
+        email: elements.adminEmailInput.value.trim(),
+        role: elements.adminUserRoleSelect.value,
+        clientId: state.activeClientId,
+        password: elements.adminUserPasswordInput.value,
+        isActive: elements.adminUserActiveInput.checked
+      };
+
+      if (!payload.username) {
+        setStatus("Debes indicar un usuario.");
+        return;
+      }
+
+      if (!userId && !payload.password) {
+        setStatus("La contraseña es obligatoria al crear un usuario.");
+        return;
+      }
+
+      if (payload.role === "admin") {
+        payload.clientId = "";
+      }
+
+      if (!payload.password) {
+        delete payload.password;
+      }
+
+      const endpoint = userId ? `/api/admin/users/${encodeURIComponent(userId)}` : "/api/admin/users";
+      const method = userId ? "PUT" : "POST";
+
+      try {
+        const response = await fetch(endpoint, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({ ok: false, error: "Error de red." }));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || "No se pudo guardar el usuario.");
+        }
+
+        await loadAdminUsers();
+        resetAdminUserForm();
+        setStatus(`Usuario ${userId ? "actualizado" : "creado"} correctamente.`);
+      } catch (error) {
+        setStatus(`Error guardando usuario: ${error.message}`);
+      }
+    });
+  }
+
+  if (elements.adminClientNameInput) {
+    elements.adminClientNameInput.addEventListener("input", () => {
+      const client = getActiveClient();
+      client.name = elements.adminClientNameInput.value;
+      renderAdminClientsList();
+      renderSelectors();
+      renderCanvas();
+      setStatus("Cambios de cliente pendientes de guardar.");
+    });
+  }
+
+  [
+    elements.adminPrimaryColorInput,
+    elements.adminSecondaryColorInput,
+    elements.adminDarkColorInput,
+    elements.adminAccentColorInput
+  ].forEach((input) => {
+    if (!input) return;
+    input.addEventListener("input", () => {
+      const client = getActiveClient();
+      client.primaryColor = elements.adminPrimaryColorInput.value;
+      client.secondaryColor = elements.adminSecondaryColorInput.value;
+      client.darkColor = elements.adminDarkColorInput.value;
+      client.accentColor = elements.adminAccentColorInput.value;
+      renderAdminClientsList();
+      renderCanvas();
+      setStatus("Cambios de cliente pendientes de guardar.");
+    });
+  });
+
+  if (elements.adminLogoWidthInput) {
+    elements.adminLogoWidthInput.addEventListener("input", () => {
+      const client = getActiveClient();
+      client.logoWidth = Number(elements.adminLogoWidthInput.value);
+      renderCanvas();
+      setStatus("Cambios de cliente pendientes de guardar.");
+    });
+  }
+
+  if (elements.adminLogoInput) {
+    elements.adminLogoInput.addEventListener("change", async () => {
+      const file = elements.adminLogoInput.files[0];
+      if (!file) return;
+      const client = getActiveClient();
+      client.logoDataUrl = await readFileAsDataUrl(file);
+      client.logoPath = "";
+      renderCanvas();
+      renderAdminClientsList();
+      await saveState();
+      elements.adminLogoInput.value = "";
+      setStatus("Logotipo actualizado y guardado.");
+    });
+  }
+
+  if (elements.adminClientForm) {
+    elements.adminClientForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        await saveState();
+        render();
+        setStatus("Cliente guardado correctamente.");
+      } catch (error) {
+        setStatus(`Error guardando cliente: ${error.message}`);
+      }
+    });
+  }
+
+  if (elements.exportsFormatSelect && elements.formatSelect) {
+    elements.exportsFormatSelect.value = elements.formatSelect.value;
+    elements.exportsFormatSelect.addEventListener("change", () => {
+      elements.formatSelect.value = elements.exportsFormatSelect.value;
+    });
+    elements.formatSelect.addEventListener("change", () => {
+      elements.exportsFormatSelect.value = elements.formatSelect.value;
+    });
+  }
+
+  if (elements.exportsQualityInput && elements.qualityInput) {
+    elements.exportsQualityInput.value = elements.qualityInput.value;
+    elements.exportsQualityInput.addEventListener("input", () => {
+      elements.qualityInput.value = elements.exportsQualityInput.value;
+    });
+    elements.qualityInput.addEventListener("input", () => {
+      elements.exportsQualityInput.value = elements.qualityInput.value;
+    });
+  }
+
   elements.clientSelect.addEventListener("change", () => {
     state.activeClientId = elements.clientSelect.value;
     ensureActiveProjectForClient(state.activeClientId);
@@ -932,26 +2092,14 @@ function bindEvents() {
   });
 
   elements.newClientButton.addEventListener("click", () => {
-    const client = {
-      id: uid("client"),
-      name: "Nuevo cliente",
-      logoDataUrl: "",
-      primaryColor: "#9bd80d",
-      secondaryColor: "#f0ecdc",
-      darkColor: "#071018",
-      accentColor: "#40d8ff",
-      logoWidth: 20,
-      backgrounds: []
-    };
-    state.clients.push(client);
-    state.activeClientId = client.id;
-    const project = createProject(client.id);
-    state.projects.push(project);
-    state.activeProjectId = project.id;
-    activeSlideIndex = 0;
-    render();
-    scheduleAutosave();
+    createClientWithProject();
   });
+
+  if (elements.deleteClientButton) {
+    elements.deleteClientButton.addEventListener("click", () => {
+      deleteClientById(state.activeClientId);
+    });
+  }
 
   elements.projectSelect.addEventListener("change", () => {
     state.activeProjectId = elements.projectSelect.value;
@@ -974,6 +2122,50 @@ function bindEvents() {
     activeSlideIndex = 0;
     render();
     scheduleAutosave();
+  });
+
+  elements.projectList.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+
+    const { action, projectId } = button.dataset;
+    const project = state.projects.find((item) => item.id === projectId);
+    if (!project) return;
+
+    if (action === "open") {
+      state.activeProjectId = project.id;
+      activeSlideIndex = 0;
+      render();
+      setStatus(`Proyecto abierto: ${project.name}`);
+      return;
+    }
+
+    if (action === "duplicate") {
+      const copy = structuredClone(project);
+      copy.id = uid("project");
+      copy.name = `${project.name} copia`;
+      copy.updatedAt = new Date().toISOString();
+      copy.slides = (copy.slides || []).map((slide) => ({ ...slide, id: uid("slide") }));
+      state.projects.push(copy);
+      state.activeProjectId = copy.id;
+      activeSlideIndex = 0;
+      render();
+      scheduleAutosave();
+      setStatus(`Proyecto duplicado: ${copy.name}`);
+      return;
+    }
+
+    if (action === "delete") {
+      const confirmed = window.confirm(`Eliminar "${project.name}"? Esta accion no se puede deshacer.`);
+      if (!confirmed) return;
+
+      state.projects = state.projects.filter((item) => item.id !== project.id);
+      ensureActiveProjectForClient(state.activeClientId);
+      activeSlideIndex = 0;
+      render();
+      scheduleAutosave();
+      setStatus(`Proyecto eliminado: ${project.name}`);
+    }
   });
 
   elements.slideList.addEventListener("click", (event) => {
@@ -1000,25 +2192,37 @@ function bindEvents() {
 
   elements.backgroundInput.addEventListener("change", async () => {
     try {
-      const file = elements.backgroundInput.files[0];
-      if (!file) return;
-      const client = getActiveClient();
-      if (!Array.isArray(client.backgrounds)) client.backgrounds = [];
-      const background = {
-        id: uid("background"),
-        name: file.name.replace(/\.[^.]+$/, ""),
-        dataUrl: await readFileAsDataUrl(file)
-      };
-      client.backgrounds.push(background);
+      await uploadBackgroundFiles(elements.backgroundInput.files);
       elements.backgroundInput.value = "";
-      updateSlide({ backgroundId: background.id, backgroundDataUrl: "" });
-      await saveState();
-      setStatus("Fondo agregado y aplicado a la lámina actual.");
     } catch (error) {
       elements.backgroundInput.value = "";
       setStatus(`Error cargando fondo: ${error.message}`);
     }
   });
+
+  const backgroundLibrary = elements.backgroundList.closest(".background-library");
+  if (backgroundLibrary) {
+    backgroundLibrary.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      backgroundLibrary.classList.add("drag-over");
+    });
+
+    backgroundLibrary.addEventListener("dragleave", (event) => {
+      if (!backgroundLibrary.contains(event.relatedTarget)) {
+        backgroundLibrary.classList.remove("drag-over");
+      }
+    });
+
+    backgroundLibrary.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      backgroundLibrary.classList.remove("drag-over");
+      try {
+        await uploadBackgroundFiles(event.dataTransfer?.files || []);
+      } catch (error) {
+        setStatus(`Error cargando fondo: ${error.message}`);
+      }
+    });
+  }
 
   elements.addSlideButton.addEventListener("click", () => {
     const project = getActiveProject();
@@ -1040,56 +2244,58 @@ function bindEvents() {
 
   elements.saveButton.addEventListener("click", saveState);
 
-  elements.exportJsonButton.addEventListener("click", () => {
-    const project = getActiveProject();
-    const client = getActiveClient();
-    downloadJson(
-      {
-        name: project.name,
-        client: {
-          id: client.id,
-          name: client.name,
-          primaryColor: client.primaryColor,
-          secondaryColor: client.secondaryColor,
-          darkColor: client.darkColor,
-          accentColor: client.accentColor
-        },
-        slides: project.slides
-      },
-      `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "content-studio"}.json`
-    );
-    setStatus("JSON exportado desde el proyecto actual.");
-  });
+  if (elements.exportJsonButton) {
+    elements.exportJsonButton.addEventListener("click", () => {
+      exportActiveProjectAsJson();
+      setStatus("JSON exportado desde el proyecto actual.");
+    });
+  }
+
+  if (elements.exportsJsonButton) {
+    elements.exportsJsonButton.addEventListener("click", () => {
+      exportActiveProjectAsJson();
+      setExportsStatus("JSON del proyecto exportado.");
+      setStatus("JSON del proyecto exportado.");
+    });
+  }
+
+  if (elements.exportConfigCsvButton) {
+    elements.exportConfigCsvButton.addEventListener("click", () => {
+      exportConfigCsv();
+      setExportsStatus("CSV de configuracion exportado.");
+      setStatus("CSV de configuracion exportado.");
+    });
+  }
 
   elements.jsonInput.addEventListener("change", async () => {
     try {
       const file = elements.jsonInput.files[0];
       if (!file) return;
-      const payload = JSON.parse(await file.text());
-      const importedItems = Array.isArray(payload) ? payload : payload.slides || payload.laminas || payload.posts;
-      if (!Array.isArray(importedItems) || importedItems.length === 0) {
-        throw new Error("El JSON debe incluir un arreglo en slides, laminas, posts o ser un arreglo directo.");
-      }
-
-      const project = {
-        id: uid("project"),
-        clientId: getActiveClient().id,
-        name: payload.name || payload.nombre || `Contenido importado ${new Date().toLocaleDateString("es-CL")}`,
-        updatedAt: new Date().toISOString(),
-        slides: importedItems.map(normalizeImportedSlide)
-      };
-
-      state.projects.push(project);
-      state.activeProjectId = project.id;
-      activeSlideIndex = 0;
+      const project = await importProjectFromJsonFile(file);
       elements.jsonInput.value = "";
-      render();
-      await saveState();
       setStatus(`JSON importado: ${project.slides.length} láminas creadas en "${project.name}".`);
+      setExportsStatus(`JSON importado: ${project.slides.length} laminas.`);
     } catch (error) {
       setStatus(`Error importando JSON: ${error.message}`);
+      setExportsStatus(`Error importando JSON: ${error.message}`);
     }
   });
+
+  if (elements.configCsvInput) {
+    elements.configCsvInput.addEventListener("change", async () => {
+      try {
+        const file = elements.configCsvInput.files[0];
+        if (!file) return;
+        await importConfigCsv(file);
+        elements.configCsvInput.value = "";
+        setExportsStatus("Configuracion CSV importada y aplicada.");
+        setStatus("Configuracion CSV importada y aplicada.");
+      } catch (error) {
+        setStatus(`Error importando CSV: ${error.message}`);
+        setExportsStatus(`Error importando CSV: ${error.message}`);
+      }
+    });
+  }
 
   elements.clearBackgroundButton.addEventListener("click", () => {
     updateSlide({ backgroundId: "", backgroundDataUrl: "" });
@@ -1102,23 +2308,64 @@ function bindEvents() {
       const filePath = await exportCanvas(activeSlideIndex, true);
       setStatus(`Exportación guardada: ${filePath}`);
     } catch (error) {
+      console.error("Export current failed", error);
       setStatus(`Error: ${error.message}`);
     }
   });
 
-  elements.exportAllButton.addEventListener("click", async () => {
-    try {
-      const project = getActiveProject();
-      setStatus(`Exportando ${project.slides.length} láminas...`);
-      const files = [];
-      for (let index = 0; index < project.slides.length; index += 1) {
-        files.push(await exportCanvas(index, true));
+  if (elements.exportsCurrentButton) {
+    elements.exportsCurrentButton.addEventListener("click", async () => {
+      try {
+        setExportsStatus("Exportando lámina actual...");
+        const filePath = await exportCanvas(activeSlideIndex, true);
+        setExportsStatus(`Exportacion guardada: ${filePath}`);
+        setStatus(`Exportacion guardada: ${filePath}`);
+      } catch (error) {
+        console.error("Export current (exports workspace) failed", error);
+        setExportsStatus(`Error exportando: ${error.message}`);
+        setStatus(`Error: ${error.message}`);
       }
-      setStatus(`Carrusel exportado:\n${files.join("\n")}`);
-    } catch (error) {
-      setStatus(`Error: ${error.message}`);
+    });
+  }
+
+  const runExportAll = async () => {
+    const project = getActiveProject();
+    const files = [];
+    for (let index = 0; index < project.slides.length; index += 1) {
+      files.push(await exportCanvas(index, true));
     }
-  });
+    return files;
+  };
+
+  if (elements.exportAllButton) {
+    elements.exportAllButton.addEventListener("click", async () => {
+      try {
+        const project = getActiveProject();
+        setStatus(`Exportando ${project.slides.length} láminas...`);
+        const files = await runExportAll();
+        setStatus(`Carrusel exportado:\n${files.join("\n")}`);
+      } catch (error) {
+        console.error("Export all failed", error);
+        setStatus(`Error: ${error.message}`);
+      }
+    });
+  }
+
+  if (elements.exportsAllButton) {
+    elements.exportsAllButton.addEventListener("click", async () => {
+      try {
+        const project = getActiveProject();
+        setExportsStatus(`Exportando ${project.slides.length} laminas...`);
+        const files = await runExportAll();
+        setExportsStatus(`Carrusel exportado (${files.length} archivos).`);
+        setStatus(`Carrusel exportado:\n${files.join("\n")}`);
+      } catch (error) {
+        console.error("Export all (exports workspace) failed", error);
+        setExportsStatus(`Error exportando: ${error.message}`);
+        setStatus(`Error: ${error.message}`);
+      }
+    });
+  }
 }
 
 function createProject(clientId) {
@@ -1132,10 +2379,17 @@ function createProject(clientId) {
 }
 
 async function init() {
-  const response = await fetch("/api/state");
-  state = await response.json();
-  ensureActiveProjectForClient(state.activeClientId);
   bindEvents();
+  currentUser = await fetchCurrentUser();
+
+  if (!currentUser) {
+    showAuthShell();
+    setAuthStatus("Usa tu cuenta asignada para entrar.");
+    return;
+  }
+
+  await loadAppState();
+  showAppShell();
   render();
 }
 

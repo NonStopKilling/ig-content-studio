@@ -7,17 +7,67 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="shell">
+  <section id="authShell" class="auth-shell">
+    <div class="auth-hero">
+      <img class="auth-logo" src="/resources/img/area3.png" alt="Area3">
+      <p class="auth-kicker">Content Studio</p>
+      <h1 class="auth-title">Gestion centralizada de contenido visual por cliente.</h1>
+    </div>
+
+    <div class="auth-card">
+      <p class="panel-kicker">Acceso</p>
+      <h2>Inicia sesión</h2>
+      <form id="loginForm" class="auth-form">
+        <label>
+          Usuario
+          <input id="usernameInput" type="text" autocomplete="username" required>
+        </label>
+        <label>
+          Contraseña
+          <input id="passwordInput" type="password" autocomplete="current-password" required>
+        </label>
+        <button id="loginButton" class="primary" type="submit">Ingresar</button>
+      </form>
+      <div id="authStatus" class="status">Acceso administrado por Area3.</div>
+    </div>
+
+          <p class="auth-copy">Acceso privado para crear piezas, reutilizar bibliotecas y conservar el historial de trabajo.</p>
+
+  </section>
+
+  <div id="appShell" class="shell" hidden>
     <aside class="sidebar">
       <div class="brand-lockup">
-        <span class="mark">area3</span>
-        <span class="product">Content Studio</span>
+        <img class="brand-logo" src="/resources/img/area3.png" alt="Area3 Content Studio">
       </div>
 
-      <section class="panel">
+      <nav class="sidebar-nav" aria-label="Navegacion principal">
+        <button class="sidebar-tab active" type="button" data-dashboard-tab="editor">Editor</button>
+        <button class="sidebar-tab" type="button" data-dashboard-tab="library">Biblioteca</button>
+        <button class="sidebar-tab" type="button" data-dashboard-tab="templates">Plantillas</button>
+        <button class="sidebar-tab" type="button" data-dashboard-tab="projects">Proyectos</button>
+        <button class="sidebar-tab" type="button" data-dashboard-tab="exports">Exportaciones</button>
+        <button id="adminClientsTab" class="sidebar-tab" type="button" data-dashboard-tab="admin-clients" hidden>Administrar clientes</button>
+      </nav>
+
+      <section class="panel panel-compact">
+        <div class="panel-heading">
+          <div>
+            <p class="panel-kicker">Sesión</p>
+            <h2 id="currentUserLabel">Cuenta</h2>
+          </div>
+          <button id="logoutButton" type="button">Salir</button>
+        </div>
+        <p id="currentUserMeta" class="panel-note"></p>
+      </section>
+
+      <section id="clientPanel" class="panel" hidden>
         <div class="panel-heading">
           <h2>Cliente</h2>
-          <button id="newClientButton" type="button">Nuevo</button>
+          <div class="button-row">
+            <button id="newClientButton" type="button">Nuevo</button>
+            <button id="deleteClientButton" type="button">Eliminar</button>
+          </div>
         </div>
         <select id="clientSelect"></select>
         <label>
@@ -40,7 +90,7 @@
         </label>
       </section>
 
-      <section class="panel">
+      <section id="projectPanel" class="panel">
         <div class="panel-heading">
           <h2>Proyecto</h2>
           <button id="newProjectButton" type="button">Nuevo</button>
@@ -52,21 +102,24 @@
         </label>
         <div class="button-row">
           <button id="saveButton" type="button">Guardar</button>
-          <button id="exportJsonButton" type="button">Exportar JSON</button>
-          <button id="exportAllButton" type="button">Exportar todo</button>
         </div>
-        <label>
-          Importar textos JSON
-          <input id="jsonInput" type="file" accept="application/json,.json">
-        </label>
+      </section>
+
+      <section id="projectLibraryPanel" class="panel">
+        <div class="panel-heading">
+          <h2>Mis carruseles</h2>
+          <span id="projectSummary" class="panel-meta"></span>
+        </div>
+        <div id="projectList" class="project-list"></div>
       </section>
     </aside>
 
     <main class="workspace">
-      <header class="topbar">
+      <header id="editorTopbar" class="topbar">
         <div>
           <p class="kicker">Formato 1:1 · 1080 × 1080</p>
           <h1>Editor local de posts y carruseles</h1>
+          <p class="topbar-copy">Dashboard operativo para crear, guardar y exportar contenido por cliente.</p>
         </div>
         <div class="button-row">
           <button id="addSlideButton" type="button">Agregar lámina</button>
@@ -75,7 +128,7 @@
         </div>
       </header>
 
-      <section class="stage-layout">
+      <section id="editorStage" class="stage-layout">
         <div class="slide-list" id="slideList"></div>
 
         <aside class="background-library" aria-label="Fondos del cliente">
@@ -85,8 +138,8 @@
               <h2>Fondos</h2>
             </div>
             <label class="upload-chip">
-              Subir
-              <input id="backgroundInput" type="file" accept="image/*">
+              Subir lote
+              <input id="backgroundInput" type="file" accept="image/*" multiple>
             </label>
           </div>
           <div class="background-list" id="backgroundList"></div>
@@ -152,9 +205,150 @@
           </section>
         </aside>
       </section>
+
+      <section id="adminWorkspace" class="admin-workspace" hidden>
+        <div class="admin-row-top">
+          <article class="panel">
+            <div class="panel-heading">
+              <h2>Clientes</h2>
+              <div class="button-row">
+                <button id="adminCreateClientButton" class="primary" type="button">Crear cliente</button>
+                <button id="adminDeleteClientButton" type="button">Eliminar</button>
+              </div>
+            </div>
+            <p class="panel-note">CRUD convencional: selecciona en la lista y luego guarda cambios del cliente.</p>
+            <div id="adminClientsList" class="admin-clients-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <h2>Editar cliente</h2>
+              <span id="adminEditingClientId" class="panel-meta"></span>
+            </div>
+            <form id="adminClientForm" class="admin-client-form">
+              <label>
+                Nombre del cliente
+                <input id="adminClientNameInput" type="text" autocomplete="off">
+              </label>
+              <div class="swatches">
+                <label>Primario <input id="adminPrimaryColorInput" type="color"></label>
+                <label>Fondo <input id="adminSecondaryColorInput" type="color"></label>
+                <label>Oscuro <input id="adminDarkColorInput" type="color"></label>
+                <label>Acento <input id="adminAccentColorInput" type="color"></label>
+              </div>
+              <label>
+                Logotipo
+                <input id="adminLogoInput" type="file" accept="image/*">
+              </label>
+              <div class="admin-logo-preview-wrap">
+                <span class="panel-kicker">Logo actual</span>
+                <div id="adminLogoPreview" class="admin-logo-preview">Sin logo</div>
+              </div>
+              <label>
+                Ancho del logo
+                <input id="adminLogoWidthInput" type="range" min="12" max="44" step="1" value="20">
+              </label>
+              <div class="button-row">
+                <button id="adminSaveClientButton" class="primary" type="submit">Guardar cliente</button>
+              </div>
+            </form>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <h2>Usuarios del cliente seleccionado</h2>
+            <button id="adminReloadUsersButton" type="button">Recargar</button>
+          </div>
+
+          <form id="adminUserForm" class="admin-user-form">
+            <input id="adminUserIdInput" type="hidden">
+            <label>
+              Usuario
+              <input id="adminUsernameInput" type="text" autocomplete="off" required>
+            </label>
+            <label>
+              Correo electronico
+              <input id="adminEmailInput" type="email" autocomplete="off" placeholder="usuario@dominio.com">
+            </label>
+            <label>
+              Rol
+              <select id="adminUserRoleSelect">
+                <option value="cliente">Cliente</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <label>
+              Cliente
+              <input id="adminUserClientLabel" type="text" readonly>
+            </label>
+            <label>
+              Contraseña
+              <input id="adminUserPasswordInput" type="password" autocomplete="new-password" placeholder="Requerida al crear usuario">
+            </label>
+            <label class="checkbox-label">
+              <input id="adminUserActiveInput" type="checkbox" checked>
+              Usuario activo
+            </label>
+            <div class="button-row">
+              <button id="adminUserSaveButton" class="primary" type="submit">Guardar usuario</button>
+              <button id="adminUserResetButton" type="button">Limpiar formulario</button>
+            </div>
+          </form>
+
+          <div id="adminUsersList" class="admin-users-list"></div>
+          <div id="adminOpsStatus" class="status">Listo.</div>
+        </article>
+      </section>
+
+      <section id="exportsWorkspace" class="exports-workspace" hidden>
+        <article class="panel">
+          <div class="panel-heading">
+            <h2>Exportacion de contenido</h2>
+          </div>
+          <p class="panel-note">Esta seccion centraliza exportaciones e importaciones para no mezclarla con edicion de laminas.</p>
+          <div class="exports-grid">
+            <label>
+              Formato de imagen
+              <select id="exportsFormatSelect">
+                <option value="jpeg">JPG para Instagram</option>
+                <option value="png">PNG</option>
+              </select>
+            </label>
+            <label>
+              Calidad JPG
+              <input id="exportsQualityInput" type="range" min="0.72" max="0.98" step="0.01" value="0.92">
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="exportsCurrentButton" class="primary" type="button">Exportar lámina actual</button>
+            <button id="exportsAllButton" type="button">Exportar carrusel completo</button>
+            <button id="exportsJsonButton" type="button">Exportar JSON del proyecto</button>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <h2>Configuracion y datos</h2>
+          </div>
+          <div class="button-row">
+            <button id="exportConfigCsvButton" type="button">Exportar configuracion CSV</button>
+          </div>
+          <label>
+            Importar contenido JSON
+            <input id="jsonInput" type="file" accept="application/json,.json">
+          </label>
+          <label>
+            Importar configuracion CSV
+            <input id="configCsvInput" type="file" accept="text/csv,.csv">
+          </label>
+          <div id="exportsOpsStatus" class="status">Listo para exportar o importar.</div>
+        </article>
+      </section>
     </main>
   </div>
 
+  <script src="/vendor/html2canvas.min.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

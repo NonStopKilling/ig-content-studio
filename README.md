@@ -15,6 +15,11 @@ La app está pensada para trabajar primero en local y luego publicarse en un hos
 - Recursos estáticos de marca: `resources/`.
 - Puerto local por defecto: `4173`.
 
+## Documentacion viva
+
+- Bitacora de avances: `docs/bitacora-progreso.md`
+- Mapa operativo de la app: `docs/mapa-app.md`
+
 ## Funciones principales
 
 - Crear y editar clientes.

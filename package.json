@@ -4,9 +4,11 @@
   "private": true,
   "description": "Editor local para crear y exportar contenido de Instagram con plantillas.",
   "scripts": {
+    "dev": "node server.js",
     "start": "node server.js"
   },
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "mysql2": "^3.11.5"
   },
   "engines": {
