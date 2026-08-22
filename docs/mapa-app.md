@@ -77,13 +77,13 @@ Documento vivo para no perder contexto tecnico y reducir dependencia del histori
   - Cuenta cliente con edicion de marca habilitada (colores y logotipo).
   - Sistema de estados visuales con check/cruz para acciones exitosas o fallidas.
   - Pipeline de exportacion con `html2canvas` como primer motor para mayor fidelidad visual.
-  - Captura al tamano visible del `postCanvas` y reescalado final a 1080x1080 para alinear preview/export.
+  - Captura aislada al tamano visible del `postCanvas` y reescalado final a 1080x1080 para alinear preview/export sin reducir proporcionalmente texto, CTA ni logo.
+  - Espera de fuentes e imagenes antes de capturar; reduce el riesgo de exportar logo o fondo sin cargar.
+  - Estilos de exportacion compatibles con html2canvas: no se usan funciones CSS `color-mix()`.
   - Fallback final al renderer legacy para continuidad operativa cuando fallan motores de captura DOM.
   - `favicon.ico` local para evitar 404 de recurso en navegador.
   - Descarga de exportaciones via `fetch -> blob -> objectURL` para evitar el aviso `File wasn't available on site`.
 - Pendiente para cierre fase 1:
-  - CRUD admin de clientes.
-  - CRUD admin de usuarios.
   - Galeria comun de fondos administrada por admin.
   - Cambio de clave desde panel de usuario.
   - Resumen admin por cliente con metricas.
@@ -98,3 +98,15 @@ Documento vivo para no perder contexto tecnico y reducir dependencia del histori
 - Si prioridad es fidelidad: usar PNG.
 - Si prioridad es peso de archivo: usar JPG con calidad alta (>= 0.92).
 - Diferencias visuales fuertes entre preview y exportado deben tratarse como bug de fidelidad y corregirse en el pipeline de exportacion.
+- Flujo actual: clonar preview visible -> capturar DOM con html2canvas -> escalar el bitmap final a 1080x1080. No forzar el clon a 1080px antes de capturar, porque rompe la relacion entre medidas CSS fijas y el preview.
+- El renderer legacy no es la ruta deseada para fidelidad; se mantiene solo para que un bloqueo de CORS/DOM no deje al usuario sin exportacion.
+
+## Diagnostico de consola externo
+- `share-modal.js` no pertenece al repositorio: no hay archivo ni referencia con ese nombre.
+- Error `Cannot read properties of null (reading 'addEventListener')` en ese archivo debe atribuirse a extension o script inyectado por el navegador.
+- Validar en ventana privada sin extensiones antes de abrir una incidencia de la aplicacion.
+
+## Relevo operativo
+- Antes de probar rutas nuevas del backend, confirmar que `http://localhost:4173` esta servido por la version actual de `server.js`; procesos Node viejos han causado falsos `404` durante esta sesion.
+- Comando de arranque: `npm run dev`.
+- Endpoint de descarga validado: `GET /api/export/file/:fileName`, autenticado, usado por frontend mediante `fetch -> blob -> objectURL`.

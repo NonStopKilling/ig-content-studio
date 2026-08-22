@@ -221,3 +221,43 @@
 - Se detecto que la descarga por enlace directo al endpoint podia disparar el mensaje del navegador `File wasn't available on site`.
 - Se cambio la descarga a flujo `fetch -> blob -> objectURL` para hacerla mas estable y compatible con Chrome/Edge.
 - El endpoint backend se mantiene para servir el archivo exportado, pero la descarga ya no depende de navegar a esa ruta.
+
+### Cierre tecnico: fidelidad visual de exportacion (2026-08-12)
+- Se identifico una instancia Node antigua en el puerto `4173`; se reinicio el backend y se valido el endpoint `GET /api/export/file/:fileName` autenticado con un JPG real:
+	- respuesta `200`,
+	- tipo `image/jpeg`,
+	- descarga como `attachment`.
+- Se detecto que `html2canvas` no soportaba reglas CSS `color-mix()` y por eso la exportacion fallaba con el error `Attempting to parse an unsupported color function "color"`.
+- Se reemplazaron las tres reglas incompatibles por alternativas CSS compatibles en `public/styles.css`:
+	- marco de la lamina,
+	- resaltado de titulo editorial,
+	- fondo de tarjeta checklist.
+- La captura WYSIWYG ahora espera fuentes e imagenes, clona el `postCanvas` de forma aislada y usa `html2canvas` como primera opcion.
+- Se corrigio la desproporcion entre preview y archivo final: el clon ya no se fuerza a `1080px` antes de capturar.
+	- captura el preview con sus dimensiones CSS reales,
+	- luego reescala el bitmap completo a `1080 x 1080`,
+	- asi conserva la proporcion visual de tipografia, CTA, padding y logotipo del preview.
+- Pipeline definitivo de exportacion:
+	1. `html2canvas` sobre clon aislado del preview,
+	2. snapshot SVG/foreignObject,
+	3. renderer canvas legacy solo como contingencia cuando la captura DOM no puede usarse.
+- Validaciones realizadas:
+	- `node --check public/app.js` correcto.
+	- Sin diagnosticos en `public/app.js` ni `public/styles.css`.
+	- Sin usos restantes de `color-mix()` en estilos del proyecto.
+
+### Error ajeno al proyecto confirmado (2026-08-12)
+- Error observado en navegador: `share-modal.js:1 Uncaught TypeError: Cannot read properties of null (reading 'addEventListener')`.
+- Se busco `share-modal` / `shareModal` en todo el repositorio y no existe archivo ni referencia de la aplicacion.
+- Conclusión: proviene de una extension o script inyectado por el navegador, no del frontend de Instagram Content Studio.
+- No modificar `public/app.js` ni `server.js` para ese error. Para comprobarlo, abrir la app en ventana de incognito sin extensiones o desactivar temporalmente extensiones de compartir/captura.
+
+### Estado de relevo para proxima IA
+- Flujo de exportacion funcional y validado tras la ultima correccion; la comparacion visual final la realiza el usuario desde el navegador tras `Ctrl+F5`.
+- Servidor local esperado: `npm run dev` en `http://localhost:4173`.
+- Si aparece `API route not found` para una ruta ya presente en `server.js`, verificar y reiniciar cualquier proceso Node antiguo que siga escuchando en `4173`.
+- Pendientes funcionales reales de fase 1:
+	- galeria comun de fondos administrada por admin,
+	- cambio de contrasena desde cuenta cliente,
+	- metricas/resumen admin por cliente (laminas, disco, exportaciones e inicios de sesion),
+	- revisar en navegador sin extensiones si queda algun aviso que parezca propio de la app.
